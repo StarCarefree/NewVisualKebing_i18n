@@ -17,9 +17,13 @@
     "entrypoints": {
         "main": [
             "com.github.newvisualkeybing.NewVisualKeybing"
+        ],
+        "client": [
+            "com.github.newvisualkeybing.client.NewVisualKeybingFabricClient"
         ]
     },
     "mixins": [
+        "newvisualkeybing.mixins.json",
         "newvisualkeybing.fabric.mixins.json"
     ],
     "depends": {
