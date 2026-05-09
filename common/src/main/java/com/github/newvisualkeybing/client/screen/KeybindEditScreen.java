@@ -424,8 +424,15 @@ public class KeybindEditScreen extends Screen {
             applyKey(waitingMapping, InputConstants.getKey(keyCode, scanCode));
             return true;
         }
+        if (profilePanel.keyPressed(keyCode, scanCode, modifiers)) return true;
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) { onClose(); return true; }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (profilePanel.charTyped(codePoint, modifiers)) return true;
+        return super.charTyped(codePoint, modifiers);
     }
 
     @Override

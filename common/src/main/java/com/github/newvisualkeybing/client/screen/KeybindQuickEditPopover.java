@@ -96,7 +96,7 @@ final class KeybindQuickEditPopover {
                 c.textPrimary(), false);
         g.fill(cardX + 8, cardY + HEADER_H - 1, cardX + cardW - 8, cardY + HEADER_H,
                 UITheme.withAlpha(c.divider(), 0xA0));
-        // Header ✕ close
+
         headerCloseX = cardX + cardW - CARD_PAD - 14;
         headerCloseY = cardY + (HEADER_H - 14) / 2 + 2;
         renderXButton(g, headerCloseX, headerCloseY, 14,
@@ -185,9 +185,9 @@ final class KeybindQuickEditPopover {
             return true;
         }
 
-        if (button != 0) return true;  // swallow non-left clicks while modal open
+        if (button != 0) return true;
 
-        // Header ✕ or footer Close → close popover
+
         if (KeybindViewerScreen.inside(mx, my, headerCloseX, headerCloseY, 14, 14)
                 || KeybindViewerScreen.inside(mx, my, closeX, closeY, CLOSE_BTN_W, 20)) {
             close();

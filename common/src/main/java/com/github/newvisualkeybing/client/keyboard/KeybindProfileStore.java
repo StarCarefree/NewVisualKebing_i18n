@@ -118,11 +118,17 @@ public final class KeybindProfileStore {
     }
 
     public Profile saveCurrentProfile() {
+        return saveCurrentProfile(null);
+    }
+
+    public Profile saveCurrentProfile(String requestedName) {
         Profile profile = selectedProfile();
         if (profile == null) {
-            profile = new Profile(nextProfileName());
+            profile = new Profile(normalizeProfileName(requestedName, -1));
             data.profiles.add(profile);
             data.selectedProfile = data.profiles.size() - 1;
+        } else if (requestedName != null && !requestedName.isBlank()) {
+            profile.name = normalizeProfileName(requestedName, selectedIndex());
         }
         profile.updatedAt = LocalDateTime.now().toString();
         profile.bindings = captureBindings();
@@ -131,11 +137,24 @@ public final class KeybindProfileStore {
     }
 
     public Profile createProfileFromCurrent() {
-        Profile profile = new Profile(nextProfileName());
+        return createProfileFromCurrent(null);
+    }
+
+    public Profile createProfileFromCurrent(String requestedName) {
+        Profile profile = new Profile(normalizeProfileName(requestedName, -1));
         profile.updatedAt = LocalDateTime.now().toString();
         profile.bindings = captureBindings();
         data.profiles.add(profile);
         data.selectedProfile = data.profiles.size() - 1;
+        save();
+        return profile;
+    }
+
+    public Profile renameSelectedProfile(String requestedName) {
+        Profile profile = selectedProfile();
+        if (profile == null) return null;
+        profile.name = normalizeProfileName(requestedName, selectedIndex());
+        profile.updatedAt = LocalDateTime.now().toString();
         save();
         return profile;
     }
@@ -208,8 +227,7 @@ public final class KeybindProfileStore {
             try (Reader reader = Files.newBufferedReader(latest, StandardCharsets.UTF_8)) {
                 Profile imported = GSON.fromJson(reader, Profile.class);
                 if (imported == null || imported.bindings == null) return null;
-                imported.name = uniqueProfileName(imported.name == null || imported.name.isBlank()
-                        ? nextProfileName() : imported.name);
+                imported.name = normalizeProfileName(imported.name, -1);
                 imported.updatedAt = LocalDateTime.now().toString();
                 data.profiles.add(imported);
                 data.selectedProfile = data.profiles.size() - 1;
@@ -293,7 +311,7 @@ public final class KeybindProfileStore {
         if (data.priorities == null) data.priorities = new HashMap<>();
         for (Profile profile : data.profiles) {
             if (profile.bindings == null) profile.bindings = new ArrayList<>();
-            if (profile.name == null || profile.name.isBlank()) profile.name = nextProfileName();
+            if (profile.name == null || profile.name.isBlank()) profile.name = normalizeProfileName(null, -1);
             for (Binding binding : profile.bindings) {
                 if (binding.name != null) data.priorities.putIfAbsent(binding.name, binding.priority);
             }
@@ -306,19 +324,36 @@ public final class KeybindProfileStore {
     }
 
     private String uniqueProfileName(String baseName) {
+        return uniqueProfileName(baseName, -1);
+    }
+
+    private String uniqueProfileName(String baseName, int ignoredIndex) {
         String name = baseName;
         int index = 2;
-        while (profileNameExists(name)) {
+        while (profileNameExists(name, ignoredIndex)) {
             name = baseName + " " + index++;
         }
         return name;
     }
 
     private boolean profileNameExists(String name) {
-        for (Profile profile : data.profiles) {
+        return profileNameExists(name, -1);
+    }
+
+    private boolean profileNameExists(String name, int ignoredIndex) {
+        for (int i = 0; i < data.profiles.size(); i++) {
+            if (i == ignoredIndex) continue;
+            Profile profile = data.profiles.get(i);
             if (Objects.equals(profile.name, name)) return true;
         }
         return false;
+    }
+
+    private String normalizeProfileName(String requestedName, int ignoredIndex) {
+        String baseName = requestedName == null ? "" : requestedName.trim().replaceAll("\\s+", " ");
+        if (baseName.isBlank()) baseName = nextProfileName();
+        if (baseName.length() > 48) baseName = baseName.substring(0, 48).trim();
+        return uniqueProfileName(baseName, ignoredIndex);
     }
 
     private static Profile copyProfile(Profile source) {

@@ -40,7 +40,9 @@ public class KeyBindingScanner {
             String modId,
             String modName,
             boolean self,
-            ConflictContext conflictContext
+            ConflictContext conflictContext,
+            String currentKeyName,
+            String defaultKeyName
     ) {
         public String contextDescription() {
             return switch (conflictContext) {
@@ -53,6 +55,7 @@ public class KeyBindingScanner {
     }
 
     public record ScanStats(int total, int free, int self, int other, int bound, int conflict) {}
+    public record ModStats(int bindings, int inputs, int conflicts) {}
 
     private static final Set<String> VANILLA_CATEGORIES = Set.of(
             "gameplay", "inventory", "movement", "multiplayer", "ui", "misc", "narrator", "creative"
@@ -64,12 +67,18 @@ public class KeyBindingScanner {
     private final Map<Integer, KeyStatus> mouseStatuses = new HashMap<>();
     private final Map<Integer, String> keyLabelCache = new HashMap<>();
     private final Map<String, String> registeredMods = new LinkedHashMap<>();
+    private final Map<String, ModStats> modStats = new HashMap<>();
+    private Map<String, String> sortedRegisteredMods = Collections.emptyMap();
+    private ScanStats stats = new ScanStats(0, 0, 0, 0, 0, 0);
+    private long version;
 
     private long lastScanTime = -1L;
     private static final long RESCAN_INTERVAL_MS = 3000L;
 
-    public void refreshIfNeeded() {
-        if (System.currentTimeMillis() - lastScanTime > RESCAN_INTERVAL_MS) scan();
+    public boolean refreshIfNeeded() {
+        if (System.currentTimeMillis() - lastScanTime <= RESCAN_INTERVAL_MS) return false;
+        scan();
+        return true;
     }
 
     public void scan() {
@@ -78,9 +87,16 @@ public class KeyBindingScanner {
         keyboardStatuses.clear();
         mouseStatuses.clear();
         registeredMods.clear();
+        modStats.clear();
 
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.options == null) return;
+        if (minecraft.options == null) {
+            sortedRegisteredMods = Collections.emptyMap();
+            stats = computeStats();
+            version++;
+            lastScanTime = System.currentTimeMillis();
+            return;
+        }
 
         for (KeyMapping mapping : minecraft.options.keyMappings) {
             String actionKey = mapping.getName();
@@ -101,7 +117,9 @@ public class KeyBindingScanner {
                     modId,
                     modName,
                     Constants.MOD_ID.equals(modId),
-                    ctx
+                    ctx,
+                    key.getDisplayName().getString(),
+                    mapping.getDefaultKey().getDisplayName().getString()
             );
 
             if (key.getType() == InputConstants.Type.MOUSE) {
@@ -125,6 +143,12 @@ public class KeyBindingScanner {
             mouseStatuses.put(entry.getKey(), computeStatus(entry.getValue()));
         }
 
+        sortedRegisteredMods = registeredMods.entrySet().stream()
+                .sorted(Map.Entry.comparingByValue(String.CASE_INSENSITIVE_ORDER))
+                .collect(LinkedHashMap::new, (map, entry) -> map.put(entry.getKey(), entry.getValue()), LinkedHashMap::putAll);
+        rebuildModStats();
+        stats = computeStats();
+        version++;
         lastScanTime = System.currentTimeMillis();
     }
 
@@ -138,12 +162,56 @@ public class KeyBindingScanner {
 
     public List<KeyBindingInfo> getBindings(int glfwKey) {
         List<KeyBindingInfo> list = keyboardBindings.get(glfwKey);
-        return list == null ? Collections.emptyList() : Collections.unmodifiableList(list);
+        return list == null ? Collections.emptyList() : list;
     }
 
     public List<KeyBindingInfo> getMouseBindings(int mouseButton) {
         List<KeyBindingInfo> list = mouseBindings.get(mouseButton);
-        return list == null ? Collections.emptyList() : Collections.unmodifiableList(list);
+        return list == null ? Collections.emptyList() : list;
+    }
+
+    public List<KeyBindingInfo> getVirtualBindings(int virtualKey) {
+        if (KeyboardLayoutData.isWheel(virtualKey)) return Collections.emptyList();
+        if (KeyboardLayoutData.isMouse(virtualKey)) return getMouseBindings(KeyboardLayoutData.virtualToMouseBtn(virtualKey));
+        return getBindings(virtualKey);
+    }
+
+    public int getBindingCount(int glfwKey) {
+        List<KeyBindingInfo> list = keyboardBindings.get(glfwKey);
+        return list == null ? 0 : list.size();
+    }
+
+    public int getMouseBindingCount(int mouseButton) {
+        List<KeyBindingInfo> list = mouseBindings.get(mouseButton);
+        return list == null ? 0 : list.size();
+    }
+
+    public KeyStatus getVirtualStatus(int virtualKey) {
+        if (KeyboardLayoutData.isWheel(virtualKey)) return KeyStatus.FREE;
+        if (KeyboardLayoutData.isMouse(virtualKey)) return getMouseStatus(KeyboardLayoutData.virtualToMouseBtn(virtualKey));
+        return getStatus(virtualKey);
+    }
+
+    public int getVirtualBindingCount(int virtualKey) {
+        return getVirtualBindings(virtualKey).size();
+    }
+
+    public boolean hasBindingForMod(int virtualKey, String modId) {
+        if (modId == null || modId.isBlank()) return false;
+        for (KeyBindingInfo info : getVirtualBindings(virtualKey)) {
+            if (modId.equals(info.modId())) return true;
+        }
+        return false;
+    }
+
+    public String primaryModId(int virtualKey) {
+        List<KeyBindingInfo> bindings = getVirtualBindings(virtualKey);
+        return bindings.isEmpty() ? null : bindings.get(0).modId();
+    }
+
+    public String primaryModName(int virtualKey) {
+        List<KeyBindingInfo> bindings = getVirtualBindings(virtualKey);
+        return bindings.isEmpty() ? "" : bindings.get(0).modName();
     }
 
     public Map<Integer, List<KeyBindingInfo>> getAllBindings() {
@@ -155,9 +223,15 @@ public class KeyBindingScanner {
     }
 
     public Map<String, String> getAllRegisteredMods() {
-        return registeredMods.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue(String.CASE_INSENSITIVE_ORDER))
-                .collect(LinkedHashMap::new, (map, entry) -> map.put(entry.getKey(), entry.getValue()), LinkedHashMap::putAll);
+        return sortedRegisteredMods;
+    }
+
+    public ModStats getModStats(String modId) {
+        return modStats.getOrDefault(modId, new ModStats(0, 0, 0));
+    }
+
+    public long version() {
+        return version;
     }
 
     public Set<Integer> filterByStatus(FilterTab tab) {
@@ -217,6 +291,10 @@ public class KeyBindingScanner {
     }
 
     public ScanStats getStats() {
+        return stats;
+    }
+
+    private ScanStats computeStats() {
         int free = 0, self = 0, other = 0, bound = 0, conflict = 0;
         int total = KeyboardLayoutData.KEYS.size() + KeyboardLayoutData.MOUSE_KEYS.size();
         for (KeyboardLayoutData.KeyDef key : KeyboardLayoutData.KEYS) {
@@ -238,6 +316,42 @@ public class KeyBindingScanner {
             }
         }
         return new ScanStats(total, free, self, other, bound + self + other, conflict);
+    }
+
+    private void rebuildModStats() {
+        Map<String, MutableModStats> mutable = new HashMap<>();
+        collectModStats(keyboardBindings, keyboardStatuses, mutable);
+        collectModStats(mouseBindings, mouseStatuses, mutable);
+        modStats.clear();
+        for (Map.Entry<String, MutableModStats> entry : mutable.entrySet()) {
+            MutableModStats s = entry.getValue();
+            modStats.put(entry.getKey(), new ModStats(s.bindings, s.inputs, s.conflicts));
+        }
+    }
+
+    private static void collectModStats(Map<Integer, List<KeyBindingInfo>> bindings,
+                                        Map<Integer, KeyStatus> statuses,
+                                        Map<String, MutableModStats> out) {
+        for (Map.Entry<Integer, List<KeyBindingInfo>> entry : bindings.entrySet()) {
+            KeyStatus status = statuses.getOrDefault(entry.getKey(), KeyStatus.FREE);
+            Set<String> seenMods = new LinkedHashSet<>();
+            for (KeyBindingInfo info : entry.getValue()) {
+                MutableModStats stats = out.computeIfAbsent(info.modId(), ignored -> new MutableModStats());
+                stats.bindings++;
+                seenMods.add(info.modId());
+            }
+            for (String modId : seenMods) {
+                MutableModStats stats = out.computeIfAbsent(modId, ignored -> new MutableModStats());
+                stats.inputs++;
+                if (status == KeyStatus.CONFLICT) stats.conflicts++;
+            }
+        }
+    }
+
+    private static final class MutableModStats {
+        int bindings;
+        int inputs;
+        int conflicts;
     }
 
     public String getKeyLabel(int glfwKey) {

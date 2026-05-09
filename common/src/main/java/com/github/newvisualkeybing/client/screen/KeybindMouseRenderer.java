@@ -36,6 +36,12 @@ final class KeybindMouseRenderer {
     private int panelY;
     private int panelW;
     private int panelH;
+    private final Rect[] bounds = new Rect[KeyboardLayoutData.MOUSE_KEYS.size()];
+    private int cachedBodyX = Integer.MIN_VALUE;
+    private int cachedBodyY = Integer.MIN_VALUE;
+    private int cachedBodyW = Integer.MIN_VALUE;
+    private int cachedBodyH = Integer.MIN_VALUE;
+    private float cachedMouseScale = Float.NaN;
 
     KeybindMouseRenderer(KeyBindingScanner scanner) {
         this.scanner = scanner;
@@ -46,6 +52,7 @@ final class KeybindMouseRenderer {
 
     Integer render(GuiGraphics g, Font font, int x, int y, int w, int h,
                    Integer selectedVirtualKey, IntPredicate isVisibleKey,
+                   IntPredicate isHiddenKey,
                    int mouseX, int mouseY, float animTick) {
         var c = UITheme.colors();
         this.panelX = x;
@@ -69,6 +76,7 @@ final class KeybindMouseRenderer {
         int bodyY = innerTop + (availH - bodyH) / 2;
         int rTop = Math.round(MOUSE_TOP_R * mouseScale);
         int rBot = Math.round(MOUSE_BOT_R * mouseScale);
+        updateBounds(bodyX, bodyY, bodyW, bodyH, mouseScale);
 
         int shadow = UITheme.withAlpha(0x000000, 0x40);
         UITheme.fillRoundedRectEx(g, bodyX - 1, bodyY + 3, bodyW + 2, bodyH,
@@ -106,30 +114,35 @@ final class KeybindMouseRenderer {
             boolean wheel = KeyboardLayoutData.isWheel(key.glfwKey());
             int mouseButton = wheel ? -1 : KeyboardLayoutData.virtualToMouseBtn(key.glfwKey());
             boolean matched = isVisibleKey.test(key.glfwKey());
+            boolean hidden = isHiddenKey.test(key.glfwKey());
             boolean hover = KeybindViewerScreen.inside(mouseX, mouseY, b.x, b.y, b.w, b.h);
             boolean selected = selectedVirtualKey != null && selectedVirtualKey == key.glfwKey();
+            if (hidden) hover = false;
             if (hover) hovered = key.glfwKey();
 
             KeyBindingScanner.KeyStatus status = wheel
                     ? KeyBindingScanner.KeyStatus.FREE
                     : scanner.getMouseStatus(mouseButton);
+            int bindingCount = wheel ? 0 : scanner.getMouseBindingCount(mouseButton);
             int radius = Math.max(3, Math.min(6, Math.min(b.w, b.h) / 4));
 
-            if (matched && (hover || selected)) {
+            if (matched && !hidden && (hover || selected)) {
                 int halo = UITheme.withAlpha(selected ? KeybindViewerScreen.pulseAccent(animTick) : c.accentAlt(),
                         selected ? 0x70 : 0x50);
                 UITheme.fillRoundedRect(g, b.x - 1, b.y - 1, b.w + 2, b.h + 2, radius + 1, halo);
             }
 
             int fill = KeybindViewerScreen.keyStatusColor(status, matched);
+            if (hidden) fill = UITheme.withAlpha(c.widgetBg(), 0x24);
             UITheme.fillRoundedRect(g, b.x, b.y, b.w, b.h, radius, fill);
+            renderMouseButtonSurface(g, b, radius, status, hover || selected, wheel, hidden);
             UITheme.drawRoundedBorder(g, b.x, b.y, b.w, b.h, radius,
                     selected ? KeybindViewerScreen.pulseAccent(animTick)
                             : hover ? c.accentAlt()
-                            : matched ? c.widgetBorder()
-                            : UITheme.withAlpha(c.widgetBorder(), 0x60));
+                            : matched && !hidden ? c.widgetBorder()
+                            : UITheme.withAlpha(c.widgetBorder(), hidden ? 0x28 : 0x60));
 
-            if (b.w >= 14 && b.h >= 10) {
+            if (!hidden && b.w >= 14 && b.h >= 10) {
                 int textColor = matched ? KeybindViewerScreen.labelColorForStatus(status)
                         : UITheme.withAlpha(c.textMuted(), 0x80);
                 String label = key.label();
@@ -138,8 +151,43 @@ final class KeybindMouseRenderer {
                         b.y + (b.h - font.lineHeight) / 2,
                         textColor, false);
             }
+            if (!hidden) renderBindingBadge(g, font, b, bindingCount, status);
         }
         return hovered;
+    }
+
+    private static void renderMouseButtonSurface(GuiGraphics g, Rect b, int radius,
+                                                 KeyBindingScanner.KeyStatus status, boolean active,
+                                                 boolean wheel, boolean hidden) {
+        var c = UITheme.colors();
+        if (hidden) return;
+        g.fill(b.x + 1, b.y + 1, b.x + b.w - 1, Math.max(b.y + 2, b.y + b.h / 2),
+                UITheme.withAlpha(0xFFFFFF, active ? 0x18 : 0x0E));
+        if (wheel) {
+            int midX = b.x + b.w / 2;
+            g.fill(midX - 1, b.y + 2, midX, b.y + b.h - 2, UITheme.withAlpha(c.divider(), 0x80));
+            return;
+        }
+        if (status != KeyBindingScanner.KeyStatus.FREE) {
+            int edgeColor = KeybindViewerScreen.keyStatusColor(status);
+            UITheme.fillRoundedRect(g, b.x + 2, b.y + b.h - 3, b.w - 4, 2, Math.max(1, radius - 1),
+                    UITheme.withAlpha(edgeColor, active ? 0xD0 : 0x9A));
+        }
+    }
+
+    private static void renderBindingBadge(GuiGraphics g, Font font, Rect b, int count,
+                                           KeyBindingScanner.KeyStatus status) {
+        if (count <= 1 || b.w < 16 || b.h < 14) return;
+        var c = UITheme.colors();
+        String text = String.valueOf(count);
+        int bw = font.width(text) + 6;
+        int bh = font.lineHeight;
+        int bx = b.x + b.w - bw - 2;
+        int by = b.y + 2;
+        int chipColor = status == KeyBindingScanner.KeyStatus.CONFLICT ? c.danger() : c.accent();
+        UITheme.fillRoundedRect(g, bx, by, bw, bh, bh / 2, chipColor);
+        UITheme.drawRoundedBorder(g, bx, by, bw, bh, bh / 2, UITheme.withAlpha(0xFFFFFF, 0x40));
+        g.drawString(font, text, bx + 3, by + 1, 0xFFFFFFFF, false);
     }
 
     
@@ -165,6 +213,12 @@ final class KeybindMouseRenderer {
     }
 
     private Rect boundsAt(int index) {
+        if (index < 0 || index >= bounds.length) return null;
+        if (bounds[index] == null) updateBoundsFromPanel();
+        return bounds[index];
+    }
+
+    private void updateBoundsFromPanel() {
         int innerTop = panelY + PANEL_CONTENT_TOP;
         int innerBottom = panelY + panelH - PANEL_PAD;
         int availH = innerBottom - innerTop;
@@ -173,6 +227,19 @@ final class KeybindMouseRenderer {
         int bodyH = Math.round(MOUSE_BODY_H * ms);
         int bodyX = panelX + (panelW - bodyW) / 2;
         int bodyY = innerTop + (availH - bodyH) / 2;
+        updateBounds(bodyX, bodyY, bodyW, bodyH, ms);
+    }
+
+    private void updateBounds(int bodyX, int bodyY, int bodyW, int bodyH, float ms) {
+        if (bodyX == cachedBodyX && bodyY == cachedBodyY && bodyW == cachedBodyW
+                && bodyH == cachedBodyH && Float.compare(ms, cachedMouseScale) == 0) {
+            return;
+        }
+        cachedBodyX = bodyX;
+        cachedBodyY = bodyY;
+        cachedBodyW = bodyW;
+        cachedBodyH = bodyH;
+        cachedMouseScale = ms;
 
         int leftW = (bodyW - WHEEL_COL_W) / 2;
         int rightW = bodyW - leftW - WHEEL_COL_W;
@@ -194,20 +261,16 @@ final class KeybindMouseRenderer {
         int rTop = Math.round(MOUSE_TOP_R * ms);
         int topInset = Math.max(2, rTop / 4);
 
-        return switch (index) {
-            case 0 -> new Rect(bodyX + topInset, bodyY + 2, leftW - topInset - 1, topH - 4);
-            case 1 -> new Rect(wheelX + 1, wheelY + wheelTickH + 1, WHEEL_COL_W - 2, mmbH - 2);
-            case 2 -> new Rect(bodyX + leftW + WHEEL_COL_W + 1, bodyY + 2,
-                              rightW - topInset - 1, topH - 4);
-            case 3 -> new Rect(leftSideX, leftSideY, SIDE_W, SIDE_H);
-            case 4 -> new Rect(leftSideX, leftSideY + SIDE_H + SIDE_GAP, SIDE_W, SIDE_H);
-            case 5 -> new Rect(rightSideX, rightSideY, SIDE_W, SIDE_H);
-            case 6 -> new Rect(rightSideX, rightSideY + SIDE_H + SIDE_GAP, SIDE_W, SIDE_H);
-            case 7 -> new Rect(rightSideX, rightSideY + (SIDE_H + SIDE_GAP) * 2, SIDE_W, SIDE_H);
-            case 8 -> new Rect(wheelX + 1, wheelY + 1, WHEEL_COL_W - 2, wheelTickH - 2);
-            case 9 -> new Rect(wheelX + 1, wheelY + wheelTickH + mmbH + 1, WHEEL_COL_W - 2, wheelTickH - 2);
-            default -> null;
-        };
+        bounds[0] = new Rect(bodyX + topInset, bodyY + 2, leftW - topInset - 1, topH - 4);
+        bounds[1] = new Rect(wheelX + 1, wheelY + wheelTickH + 1, WHEEL_COL_W - 2, mmbH - 2);
+        bounds[2] = new Rect(bodyX + leftW + WHEEL_COL_W + 1, bodyY + 2, rightW - topInset - 1, topH - 4);
+        bounds[3] = new Rect(leftSideX, leftSideY, SIDE_W, SIDE_H);
+        bounds[4] = new Rect(leftSideX, leftSideY + SIDE_H + SIDE_GAP, SIDE_W, SIDE_H);
+        bounds[5] = new Rect(rightSideX, rightSideY, SIDE_W, SIDE_H);
+        bounds[6] = new Rect(rightSideX, rightSideY + SIDE_H + SIDE_GAP, SIDE_W, SIDE_H);
+        bounds[7] = new Rect(rightSideX, rightSideY + (SIDE_H + SIDE_GAP) * 2, SIDE_W, SIDE_H);
+        bounds[8] = new Rect(wheelX + 1, wheelY + 1, WHEEL_COL_W - 2, wheelTickH - 2);
+        bounds[9] = new Rect(wheelX + 1, wheelY + wheelTickH + mmbH + 1, WHEEL_COL_W - 2, wheelTickH - 2);
     }
 
     private record Rect(int x, int y, int w, int h) {}
