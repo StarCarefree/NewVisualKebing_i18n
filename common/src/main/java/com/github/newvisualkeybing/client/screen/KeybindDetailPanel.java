@@ -9,6 +9,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -18,9 +19,11 @@ import java.util.List;
 
 final class KeybindDetailPanel {
 
-    private static final int PANEL_PAD = 10;
-    private static final int ACTION_BTN_H = 20;
-    private static final int ACTION_BTN_GAP = 6;
+    private static final int PANEL_PAD = 12;
+    private static final int ACTION_BTN_H = 22;
+    private static final int ACTION_BTN_GAP = 8;
+    private static final int ROW_UNBIND_W = 14;
+    private static final int ROW_UNBIND_GAP = 4;
 
     private final KeyBindingScanner scanner;
 
@@ -28,6 +31,9 @@ final class KeybindDetailPanel {
     private int modifyX = -1, modifyY = -1;
     private int unbindX = -1, unbindY = -1;
     private int actionBtnW;
+    private final List<RowHit> rowHits = new ArrayList<>();
+
+    record RowHit(int x, int y, int w, int h, KeyBindingScanner.KeyBindingInfo info) {}
 
     KeybindDetailPanel(KeyBindingScanner scanner) {
         this.scanner = scanner;
@@ -49,9 +55,18 @@ final class KeybindDetailPanel {
         return unbindX >= 0 && KeybindViewerScreen.inside(mx, my, unbindX, unbindY, actionBtnW, ACTION_BTN_H);
     }
 
+
+    KeyBindingScanner.KeyBindingInfo getRowUnbindHit(double mx, double my) {
+        for (RowHit h : rowHits) {
+            if (KeybindViewerScreen.inside(mx, my, h.x, h.y, h.w, h.h)) return h.info;
+        }
+        return null;
+    }
+
     void render(GuiGraphics g, Font font, int x, int y, int w, int h,
                 Integer virtualKey, int mouseX, int mouseY) {
         modifyX = modifyY = unbindX = unbindY = -1;
+        rowHits.clear();
 
         var c = UITheme.colors();
         int contentY = KeybindViewerScreen.paintPanelBase(g, font, x, y, w, h,
@@ -133,7 +148,7 @@ final class KeybindDetailPanel {
                     Component.translatable("screen.newvisualkeybing.viewer.unbound").getString(),
                     c.textMuted());
         } else {
-            renderBindingList(g, font, innerX, lineY, innerW, listBottom - lineY, bindings);
+            renderBindingList(g, font, innerX, lineY, innerW, listBottom - lineY, bindings, mouseX, mouseY);
         }
 
         if (canEdit) {
@@ -187,10 +202,15 @@ final class KeybindDetailPanel {
 
     
     private void renderBindingList(GuiGraphics g, Font font, int x, int y, int w, int h,
-                                   List<KeyBindingScanner.KeyBindingInfo> bindings) {
+                                   List<KeyBindingScanner.KeyBindingInfo> bindings,
+                                   int mouseX, int mouseY) {
         var c = UITheme.colors();
         int singleRowH = font.lineHeight + 4;
         int doubleRowH = font.lineHeight * 2 + 5;
+
+        // Reserve right-edge space for the per-row ✕ unbind icon. The text region shrinks accordingly.
+        int reservedRight = ROW_UNBIND_W + ROW_UNBIND_GAP;
+        int textW = w - reservedRight;
 
         int[] rowHeights = new int[bindings.size()];
         boolean[] doubleLine = new boolean[bindings.size()];
@@ -198,7 +218,7 @@ final class KeybindDetailPanel {
             KeyBindingScanner.KeyBindingInfo info = bindings.get(i);
             String ctxTag = contextTag(info.conflictContext());
             int rightBlockW = font.width(info.modName()) + 6 + (ctxTag.isEmpty() ? 0 : font.width(ctxTag) + 6);
-            int actionMaxW = w - 8 - rightBlockW;
+            int actionMaxW = textW - 8 - rightBlockW;
             doubleLine[i] = font.width(info.actionName()) > actionMaxW;
             rowHeights[i] = doubleLine[i] ? doubleRowH : singleRowH;
         }
@@ -231,7 +251,7 @@ final class KeybindDetailPanel {
             if (usedH + rh > budgetH) { end = i; break; }
 
             KeyBindingScanner.KeyBindingInfo info = bindings.get(i);
-            renderBindingRow(g, font, x, rowY, w, rh, info, doubleLine[i]);
+            renderBindingRow(g, font, x, rowY, w, rh, info, doubleLine[i], mouseX, mouseY);
             rowY += rh + 2;
             usedH += rh + 2;
         }
@@ -246,11 +266,16 @@ final class KeybindDetailPanel {
     }
 
     
-    private static void renderBindingRow(GuiGraphics g, Font font, int x, int y, int w, int rowH,
-                                         KeyBindingScanner.KeyBindingInfo info, boolean twoLines) {
+    private void renderBindingRow(GuiGraphics g, Font font, int x, int y, int w, int rowH,
+                                  KeyBindingScanner.KeyBindingInfo info, boolean twoLines,
+                                  int mouseX, int mouseY) {
         var c = UITheme.colors();
+        // Reserve right slot for ✕; text content uses textW.
+        int textW = w - ROW_UNBIND_W - ROW_UNBIND_GAP;
+        boolean rowHovered = KeybindViewerScreen.inside(mouseX, mouseY, x, y, w, rowH);
+
         if (info.self()) {
-            UITheme.fillRoundedRect(g, x, y, w, rowH, 4,
+            UITheme.fillRoundedRect(g, x, y, textW, rowH, 4,
                     UITheme.lerpColor(c.widgetBg(), c.accent(), 0.10f));
         }
         int sideColor = info.self() ? c.accent() : UITheme.withAlpha(c.widgetBorder(), 0xC0);
@@ -261,9 +286,9 @@ final class KeybindDetailPanel {
         String modText = info.modName();
 
         if (twoLines) {
-            String actionFit = KeybindViewerScreen.fitToWidth(font, info.actionName(), w - 8);
+            String actionFit = KeybindViewerScreen.fitToWidth(font, info.actionName(), textW - 8);
             g.drawString(font, actionFit, x + 6, y + 2, actionColor, false);
-            int rightX = x + w - font.width(modText);
+            int rightX = x + textW - font.width(modText);
             int line2Y = y + font.lineHeight + 3;
             g.drawString(font, modText, rightX, line2Y, c.textMuted(), false);
             if (!ctxTag.isEmpty()) {
@@ -277,11 +302,11 @@ final class KeybindDetailPanel {
         } else {
             int modW = font.width(modText);
             int rightBlockW = modW + (ctxTag.isEmpty() ? 0 : font.width(ctxTag) + 6);
-            int actionMaxW = w - 8 - rightBlockW - 4;
+            int actionMaxW = textW - 8 - rightBlockW - 4;
             String actionText = KeybindViewerScreen.fitToWidth(font, info.actionName(), actionMaxW);
             int textY = y + (rowH - font.lineHeight) / 2;
             g.drawString(font, actionText, x + 6, textY, actionColor, false);
-            int rightX = x + w - modW;
+            int rightX = x + textW - modW;
             g.drawString(font, modText, rightX, textY, c.textMuted(), false);
             if (!ctxTag.isEmpty()) {
                 int tagX = rightX - font.width(ctxTag) - 6;
@@ -290,6 +315,27 @@ final class KeybindDetailPanel {
                 UITheme.fillRoundedRect(g, tagX - 2, textY - 1, tagBgW, tagBgH, 3,
                         UITheme.lerpColor(c.widgetBg(), c.accentAlt(), 0.20f));
                 g.drawString(font, ctxTag, tagX, textY, c.accentAlt(), false);
+            }
+        }
+
+        // Per-row ✕ unbind hit zone (always tracked; visual only on hover or row-hover)
+        int xButtonX = x + w - ROW_UNBIND_W;
+        int xButtonY = y + (rowH - ROW_UNBIND_W) / 2;
+        rowHits.add(new RowHit(xButtonX, xButtonY, ROW_UNBIND_W, ROW_UNBIND_W, info));
+        boolean xHovered = KeybindViewerScreen.inside(mouseX, mouseY, xButtonX, xButtonY, ROW_UNBIND_W, ROW_UNBIND_W);
+        if (rowHovered || xHovered) {
+            int fill = xHovered ? UITheme.lerpColor(c.widgetBg(), c.danger(), 0.55f)
+                                : UITheme.lerpColor(c.widgetBg(), c.danger(), 0.18f);
+            UITheme.fillRoundedRect(g, xButtonX, xButtonY, ROW_UNBIND_W, ROW_UNBIND_W, 3, fill);
+            UITheme.drawRoundedBorder(g, xButtonX, xButtonY, ROW_UNBIND_W, ROW_UNBIND_W, 3,
+                    UITheme.withAlpha(c.danger(), 0xC0));
+            // Draw two diagonals to form the ×
+            int cx = xButtonX + ROW_UNBIND_W / 2;
+            int cy = xButtonY + ROW_UNBIND_W / 2;
+            int markColor = xHovered ? 0xFFFFFFFF : c.danger();
+            for (int d = -3; d <= 3; d++) {
+                g.fill(cx + d, cy + d, cx + d + 1, cy + d + 1, markColor);
+                g.fill(cx + d, cy - d, cx + d + 1, cy - d + 1, markColor);
             }
         }
     }

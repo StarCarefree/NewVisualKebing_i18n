@@ -21,26 +21,26 @@ public class KeybindViewerScreen extends Screen {
 
     private static final int HEADER_H = 36;
     private static final int TOOLBAR_H = 32;
-    private static final int STATUS_H = 22;
-    private static final int CHROME_GAP = 6;
+    private static final int STATUS_H = 24;
+    private static final int CHROME_GAP = 8;
     private static final int SEARCH_W_DEFAULT = 220;
-    private static final int SEARCH_BH = 18;
+    private static final int SEARCH_BH = 20;
 
     private static final int BODY_PAD = 8;
     private static final int COL_GAP = 8;
-    private static final int MOD_PANEL_W = 160;
-    private static final int MOUSE_PANEL_W = 132;
-    private static final int DETAIL_PANEL_W = 210;
+    private static final int MOD_PANEL_W = 168;
+    private static final int MOUSE_PANEL_W = 136;
+    private static final int DETAIL_PANEL_W = 216;
     private static final int COMPACT_WIDTH_THRESHOLD = 760;
     private static final int RIGHT_RAIL_STACK_THRESHOLD = 980;
-    private static final int MOUSE_PANEL_STACK_H = 158;
+    private static final int MOUSE_PANEL_STACK_H = 160;
 
-    private static final int PANEL_PAD = 10;
+    private static final int PANEL_PAD = 12;
     private static final int PANEL_RADIUS = 8;
     private static final int PANEL_TITLE_Y = 10;
     private static final int PANEL_CONTENT_TOP = 28;
-    private static final int ACTION_BTN_H = 20;
-    private static final int ACTION_BTN_GAP = 6;
+    private static final int ACTION_BTN_H = 22;
+    private static final int ACTION_BTN_GAP = 8;
 
     private final Screen parent;
     private final KeyBindingScanner scanner = new KeyBindingScanner();
@@ -51,6 +51,7 @@ public class KeybindViewerScreen extends Screen {
     private final KeybindKeyboardRenderer keyboardRenderer = new KeybindKeyboardRenderer(scanner);
     private final KeybindMouseRenderer mouseRenderer = new KeybindMouseRenderer(scanner);
     private final KeybindDetailPanel detailPanel = new KeybindDetailPanel(scanner);
+    private final KeybindQuickEditPopover quickEdit = new KeybindQuickEditPopover(scanner, this::showNotice, this::onPriorityMutation);
 
     private EditBox searchBox;
     private MCButton closeButton;
@@ -264,6 +265,9 @@ public class KeybindViewerScreen extends Screen {
         }
 
         renderNotice(g);
+
+        // Quick-edit popover paints on top of everything else (modal-like).
+        quickEdit.render(g, font, width, height, mouseX, mouseY);
     }
 
     private void renderHeaderBar(GuiGraphics g) {
@@ -561,6 +565,26 @@ public class KeybindViewerScreen extends Screen {
         refreshFilters();
     }
 
+    private void onPriorityMutation() {
+        scanner.scan();
+        refreshFilters();
+    }
+
+    private void unbindSingleMapping(KeyBindingScanner.KeyBindingInfo info) {
+        net.minecraft.client.KeyMapping target = null;
+        for (net.minecraft.client.KeyMapping km : minecraft.options.keyMappings) {
+            if (km.getName().equals(info.translationKey())) { target = km; break; }
+        }
+        if (target == null) return;
+        minecraft.options.setKey(target, com.mojang.blaze3d.platform.InputConstants.UNKNOWN);
+        com.github.newvisualkeybing.client.keyboard.KeybindPriorityEnforcer.resetAndEnforce();
+        minecraft.options.save();
+        scanner.scan();
+        refreshFilters();
+        showNotice(Component.translatable("screen.newvisualkeybing.viewer.notice.unbind_one",
+                info.actionName()).getString());
+    }
+
     private void invalidateLayoutCache() {
         cachedLayoutWidth = -1;
         cachedLayoutHeight = -1;
@@ -707,6 +731,7 @@ public class KeybindViewerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (quickEdit.isOpen()) return quickEdit.mouseClicked(mouseX, mouseY, button);
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
         if (button != 0) return false;
 
@@ -734,8 +759,15 @@ public class KeybindViewerScreen extends Screen {
         }
 
         boolean wheelSelected = selectedVirtualKey != null && KeyboardLayoutData.isWheel(selectedVirtualKey);
+        if (selectedVirtualKey != null && !wheelSelected) {
+            KeyBindingScanner.KeyBindingInfo rowInfo = detailPanel.getRowUnbindHit(mouseX, mouseY);
+            if (rowInfo != null) {
+                unbindSingleMapping(rowInfo);
+                return true;
+            }
+        }
         if (selectedVirtualKey != null && !wheelSelected && detailPanel.isModifyHit(mouseX, mouseY)) {
-            minecraft.setScreen(new KeybindEditScreen(this, selectedVirtualKey));
+            quickEdit.open(selectedVirtualKey);
             return true;
         }
         if (selectedVirtualKey != null && !wheelSelected && detailPanel.isUnbindHit(mouseX, mouseY)) {
@@ -825,6 +857,7 @@ public class KeybindViewerScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (quickEdit.isOpen()) return quickEdit.keyPressed(keyCode, scanCode, modifiers);
         if (modPanelOpen && width >= COMPACT_WIDTH_THRESHOLD && !searchBox.isFocused()) {
             if (keyCode == 259 && !modSearchQuery.isEmpty()) {
                 modSearchQuery = modSearchQuery.substring(0, modSearchQuery.length() - 1);
@@ -837,6 +870,7 @@ public class KeybindViewerScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (quickEdit.isOpen()) return quickEdit.mouseScrolled(mouseX, mouseY, delta);
         if (selectedVirtualKey != null
                 && mouseX >= detailPanelX && mouseX <= detailPanelX + detailPanelW
                 && mouseY >= detailPanelY && mouseY <= detailPanelY + detailPanelH) {

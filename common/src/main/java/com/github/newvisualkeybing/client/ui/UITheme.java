@@ -12,17 +12,28 @@ public final class UITheme {
 
     private static Mode currentMode = Mode.DARK;
 
+    // Linear/Vercel 风格暗色板：更深更中性的背景、稍冷稍饱和的 accent、对比度更高。
     private static final ColorPalette DARK = new ColorPalette(
-            0xF00D1117, 0xFF161B22, 0xFF21262D, 0xFF30363D, 0xFF8B949E,
-            0xFF58A6FF, 0xFF79C0FF, 0xFFA5D6FF,
-            0xFFF0F6FC, 0xFFC9D1D9, 0xFF8B949E,
-            0xFF3FB950, 0xFFD29922, 0xFFF85149,
-            0xFF0D1117, 0xFF21262D, 0xFF484F58,
-            0x40000000,
-            0xFF0D1117, 0xFF30363D, 0xFF58A6FF,
-            0xFF1F6FEB, 0xFF8957E5,
-            0xFF238636, 0xFFDA3633,
-            0xE0FFFFFF, 0xFF484F58
+            // panelBg, headerBg, widgetBg, widgetBorder, widgetBorderHover
+            0xF008090C, 0xFF111317, 0xFF1A1D22, 0xFF2A2D33, 0xFF7A7E87,
+            // accent, accentHover, accentLight
+            0xFF4A7BFF, 0xFF6B95FF, 0xFF9DBAFF,
+            // textPrimary, textSecondary, textMuted
+            0xFFF5F6F7, 0xFFC2C6CC, 0xFF7B8089,
+            // successColor, warningColor, dangerColor
+            0xFF3DD68C, 0xFFE5A33A, 0xFFFF5C5C,
+            // inputBg, scrollbarTrack, scrollbarThumb
+            0xFF0A0C0F, 0xFF1A1D22, 0xFF3F434A,
+            // shadow
+            0x60000000,
+            // graphBg, gridLine, graphLine
+            0xFF08090C, 0xFF2A2D33, 0xFF4A7BFF,
+            // accentSecondary, accentTertiary
+            0xFF3457D5, 0xFF7E5BD9,
+            // successBg, dangerBg
+            0xFF1B7A4A, 0xFFC53737,
+            // glassBg, divider
+            0xE0FFFFFF, 0xFF2A2D33
     );
 
     private static final ColorPalette LIGHT = new ColorPalette(
@@ -59,43 +70,77 @@ public final class UITheme {
         fillRoundedCorner(g, x + w - radius, y + h - radius, radius, color, false, false);
     }
 
+    /**
+     * 用源色的 alpha 通道乘以覆盖率，得到反走样像素的最终颜色。
+     */
+    private static int scaleAlpha(int color, float coverage) {
+        if (coverage <= 0f) return 0;
+        if (coverage >= 1f) return color;
+        int baseAlpha = (color >>> 24) & 0xFF;
+        int newAlpha = Math.round(baseAlpha * coverage);
+        if (newAlpha <= 0) return 0;
+        return (newAlpha << 24) | (color & 0x00FFFFFF);
+    }
+
+    /**
+     * 反走样圆角填充：对每个像素先用其中心快速判断是否落在 r-1.5 内（铁定全覆盖），
+     * 边界附近的像素用 4×4 supersampling 算 0..16 级覆盖再 alpha 缩放。
+     * 半径 ≤ 1 时退化为单像素点。
+     */
     private static void fillRoundedCorner(GuiGraphics g, int cx, int cy, int r, int color, boolean left, boolean top) {
-        if (r <= 2) {
-            for (int dy = 0; dy < r; dy++) {
-                for (int dx = 0; dx < r; dx++) {
-                    float distX = left ? (r - dx - 0.5f) : (dx + 0.5f);
-                    float distY = top ? (r - dy - 0.5f) : (dy + 0.5f);
-                    if (distX * distX + distY * distY <= (float) r * r) {
-                        g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, color);
-                    }
-                }
-            }
+        if (r <= 0) return;
+        if (r == 1) {
+            g.fill(cx, cy, cx + 1, cy + 1, color);
             return;
         }
+        float r2 = (float) r * r;
+        float rInner = Math.max(0f, r - 1.5f);
+        float rInner2 = rInner * rInner;
         for (int dy = 0; dy < r; dy++) {
-            float distY = top ? (r - dy - 0.5f) : (dy + 0.5f);
-            int width = (int) Math.sqrt((float) r * r - distY * distY);
-            if (left) {
-                int startX = cx + (r - width);
-                g.fill(startX, cy + dy, cx + r, cy + dy + 1, color);
-            } else {
-                int endX = cx + width;
-                g.fill(cx, cy + dy, endX, cy + dy + 1, color);
+            for (int dx = 0; dx < r; dx++) {
+                float pxC = dx + 0.5f;
+                float pyC = dy + 0.5f;
+                float dXc = left ? (r - pxC) : pxC;
+                float dYc = top ? (r - pyC) : pyC;
+                float dCenter2 = dXc * dXc + dYc * dYc;
+                if (dCenter2 <= rInner2) {
+                    g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, color);
+                    continue;
+                }
+                if (dCenter2 > (r + 1.5f) * (r + 1.5f)) continue;
+                int hits = 0;
+                for (int sy = 0; sy < 4; sy++) {
+                    for (int sx = 0; sx < 4; sx++) {
+                        float fx = dx + (sx + 0.5f) / 4f;
+                        float fy = dy + (sy + 0.5f) / 4f;
+                        float dXs = left ? (r - fx) : fx;
+                        float dYs = top ? (r - fy) : fy;
+                        if (dXs * dXs + dYs * dYs <= r2) hits++;
+                    }
+                }
+                if (hits == 0) continue;
+                int finalColor = hits == 16 ? color : scaleAlpha(color, hits / 16f);
+                g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, finalColor);
             }
         }
     }
 
     public static void drawRoundedBorder(GuiGraphics g, int x, int y, int w, int h, int radius, int color) {
+        if (radius <= 0) {
+            g.fill(x, y, x + w, y + 1, color);
+            g.fill(x, y + h - 1, x + w, y + h, color);
+            g.fill(x, y + 1, x + 1, y + h - 1, color);
+            g.fill(x + w - 1, y + 1, x + w, y + h - 1, color);
+            return;
+        }
         g.fill(x + radius, y, x + w - radius, y + 1, color);
         g.fill(x + radius, y + h - 1, x + w - radius, y + h, color);
         g.fill(x, y + radius, x + 1, y + h - radius, color);
         g.fill(x + w - 1, y + radius, x + w, y + h - radius, color);
-        if (radius >= 2) {
-            g.fill(x + 1, y + 1, x + 2, y + 2, color);
-            g.fill(x + w - 2, y + 1, x + w - 1, y + 2, color);
-            g.fill(x + 1, y + h - 2, x + 2, y + h - 1, color);
-            g.fill(x + w - 2, y + h - 2, x + w - 1, y + h - 1, color);
-        }
+        drawCornerArc(g, x, y, radius, color, true, true);
+        drawCornerArc(g, x + w - radius, y, radius, color, false, true);
+        drawCornerArc(g, x, y + h - radius, radius, color, true, false);
+        drawCornerArc(g, x + w - radius, y + h - radius, radius, color, false, false);
     }
 
     
@@ -158,18 +203,36 @@ public final class UITheme {
     }
 
     
+    /**
+     * 反走样 1px 弧线：对每个像素 4×4 supersampling，
+     * 落在外圆内 (d ≤ r) 且不在内圆内 (d ≥ r-1) 的子样计入覆盖率。
+     */
     private static void drawCornerArc(GuiGraphics g, int cx, int cy, int r, int color,
                                       boolean left, boolean top) {
         if (r <= 0) return;
+        if (r == 1) {
+            g.fill(cx, cy, cx + 1, cy + 1, color);
+            return;
+        }
+        float rOuter2 = (float) r * r;
+        float rInner = r - 1f;
+        float rInner2 = rInner * rInner;
         for (int dy = 0; dy < r; dy++) {
-            float distY = top ? (r - dy - 0.5f) : (dy + 0.5f);
-            int width = (int) Math.sqrt((float) r * r - distY * distY);
-            if (left) {
-                int sx = cx + (r - width);
-                g.fill(sx, cy + dy, sx + 1, cy + dy + 1, color);
-            } else {
-                int ex = cx + width - 1;
-                g.fill(ex, cy + dy, ex + 1, cy + dy + 1, color);
+            for (int dx = 0; dx < r; dx++) {
+                int hits = 0;
+                for (int sy = 0; sy < 4; sy++) {
+                    for (int sx = 0; sx < 4; sx++) {
+                        float fx = dx + (sx + 0.5f) / 4f;
+                        float fy = dy + (sy + 0.5f) / 4f;
+                        float dXs = left ? (r - fx) : fx;
+                        float dYs = top ? (r - fy) : fy;
+                        float d2 = dXs * dXs + dYs * dYs;
+                        if (d2 <= rOuter2 && d2 >= rInner2) hits++;
+                    }
+                }
+                if (hits == 0) continue;
+                int finalColor = hits == 16 ? color : scaleAlpha(color, hits / 16f);
+                g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, finalColor);
             }
         }
     }

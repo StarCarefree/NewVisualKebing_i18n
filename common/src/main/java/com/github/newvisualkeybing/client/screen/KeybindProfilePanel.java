@@ -11,9 +11,9 @@ import java.util.List;
 
 final class KeybindProfilePanel {
 
-    static final int WIDTH = 164;
-    private static final int ROW_H = 20;
-    private static final int BUTTON_H = 18;
+    static final int WIDTH = 168;
+    private static final int ROW_H = 22;
+    private static final int BUTTON_H = 20;
 
     private final KeybindProfileStore profileStore;
     private final Runnable rebuildEntries;

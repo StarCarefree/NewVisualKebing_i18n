@@ -39,12 +39,12 @@ import java.util.Map;
 
 public class KeybindEditScreen extends Screen {
 
-    private static final int HEADER_H = 36;
+    private static final int HEADER_H = 40;
     private static final int FOOTER_H = 24;
-    private static final int ENTRY_H = 22;
-    private static final int CATEGORY_H = 18;
+    private static final int ENTRY_H = 24;
+    private static final int CATEGORY_H = 20;
     private static final int CHANGE_BTN_W = 96;
-    private static final int RESET_BTN_W = 70;
+    private static final int RESET_BTN_W = 72;
     private static final int COL_GAP = 4;
 
     private final Screen parent;
@@ -278,7 +278,7 @@ public class KeybindEditScreen extends Screen {
         int chBg = isWaiting ? UITheme.withAlpha(colors.accent(), 0xC0)
                 : chHover ? UITheme.lerpColor(colors.widgetBg(), colors.accent(), 0.45f)
                 : colors.widgetBg();
-        // Focused-mode invitation: unbound rows get accent so user sees "click → bind X here"
+
         int statusColor = focusedTarget ? colors.accent()
                 : conflict ? colors.dangerColor()
                 : focusVirtualKey != null && isUnbound ? colors.accentLight()

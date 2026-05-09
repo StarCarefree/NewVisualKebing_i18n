@@ -27,7 +27,7 @@ final class KeybindMouseRenderer {
     static final int SIDE_GAP = 3;
     static final int SIDE_OFFSET = 3;
 
-    private static final int PANEL_PAD = 10;
+    private static final int PANEL_PAD = 12;
     private static final int PANEL_CONTENT_TOP = 28;
 
     private final KeyBindingScanner scanner;
