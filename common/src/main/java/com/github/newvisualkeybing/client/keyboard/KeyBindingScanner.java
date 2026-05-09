@@ -286,8 +286,21 @@ public class KeyBindingScanner {
             case GLFW.GLFW_MOUSE_BUTTON_MIDDLE -> "MMB";
             case 3 -> "M4";
             case 4 -> "M5";
+            case 5 -> "M6";
+            case 6 -> "M7";
+            case 7 -> "M8";
             default -> "M" + (mouseButton + 1);
         };
+    }
+
+    /** 统一获取虚拟键标签：处理普通按键 / 鼠标按钮 / 滚轮。 */
+    public String getVirtualKeyLabel(int virtualKey) {
+        if (virtualKey == KeyboardLayoutData.WHEEL_UP_VIRTUAL) return "Wheel ▲";
+        if (virtualKey == KeyboardLayoutData.WHEEL_DOWN_VIRTUAL) return "Wheel ▼";
+        if (KeyboardLayoutData.isMouse(virtualKey)) {
+            return getMouseButtonLabel(KeyboardLayoutData.virtualToMouseBtn(virtualKey));
+        }
+        return getKeyLabel(virtualKey);
     }
 
     private static boolean matches(KeyBindingInfo info, String query) {

@@ -1,8 +1,8 @@
 package com.github.newvisualkeybing.client.screen;
 
-import com.github.newvisualkeybing.Constants;
 import com.github.newvisualkeybing.client.keyboard.FilterTab;
 import com.github.newvisualkeybing.client.keyboard.KeyBindingScanner;
+import com.github.newvisualkeybing.client.keyboard.KeybindProfileStore;
 import com.github.newvisualkeybing.client.keyboard.KeyboardLayoutData;
 import com.github.newvisualkeybing.client.ui.MCButton;
 import com.github.newvisualkeybing.client.ui.UITheme;
@@ -10,7 +10,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
@@ -20,26 +19,51 @@ import java.util.Set;
 
 public class KeybindViewerScreen extends Screen {
 
-    private static final int PANEL_MARGIN = 18;
-    private static final int MOD_PANEL_W = 172;
-    private static final int DETAIL_PANEL_W = 220;
-    private static final int MOUSE_PANEL_W = 154;
-    private static final ResourceLocation MOUSE_TEXTURE = new ResourceLocation(Constants.MOD_ID, "textures/gui/mouse_outline.png");
-    private static final int MOUSE_TEXTURE_W = 1024;
-    private static final int MOUSE_TEXTURE_H = 1536;
-    private static final int HEADER_H = 86;
-    private static final int TAB_H = 22;
-    private static final int SEARCH_H = 20;
-    private static final int STATUS_H = 26;
+    private static final int HEADER_H = 36;
+    private static final int TOOLBAR_H = 32;
+    private static final int STATUS_H = 22;
+    private static final int CHROME_GAP = 6;
+    private static final int SEARCH_W_DEFAULT = 220;
+    private static final int SEARCH_BH = 18;
+
+    private static final int BODY_PAD = 8;
+    private static final int COL_GAP = 8;
+    private static final int MOD_PANEL_W = 160;
+    private static final int MOUSE_PANEL_W = 132;
+    private static final int DETAIL_PANEL_W = 210;
+    private static final int COMPACT_WIDTH_THRESHOLD = 760;
+    private static final int RIGHT_RAIL_STACK_THRESHOLD = 980;
+    private static final int MOUSE_PANEL_STACK_H = 158;
+
+    private static final int PANEL_PAD = 10;
+    private static final int PANEL_RADIUS = 8;
+    private static final int PANEL_TITLE_Y = 10;
+    private static final int PANEL_CONTENT_TOP = 28;
+    private static final int ACTION_BTN_H = 20;
+    private static final int ACTION_BTN_GAP = 6;
 
     private final Screen parent;
     private final KeyBindingScanner scanner = new KeyBindingScanner();
+    private final KeybindTooltipRenderer tooltipRenderer = new KeybindTooltipRenderer(scanner);
+    private final KeybindProfileStore profileStore = new KeybindProfileStore();
+    private final KeybindProfilePanel profilePanel = new KeybindProfilePanel(
+            profileStore, this::onProfileMutation, this::showNotice);
+    private final KeybindKeyboardRenderer keyboardRenderer = new KeybindKeyboardRenderer(scanner);
+    private final KeybindMouseRenderer mouseRenderer = new KeybindMouseRenderer(scanner);
+    private final KeybindDetailPanel detailPanel = new KeybindDetailPanel(scanner);
 
     private EditBox searchBox;
-    private MCButton themeButton;
     private MCButton closeButton;
     private MCButton manageButton;
     private MCButton modToggleButton;
+    private MCButton profileToggleButton;
+    private MCButton layoutButton;
+
+    private KeyboardLayoutData.Style currentStyle = KeyboardLayoutData.Style.ANSI_104;
+
+    private String noticeMsg;
+    private long noticeTime;
+    private float animTick;
 
     private FilterTab activeFilter = FilterTab.ALL;
     private Set<Integer> textFilteredKeys;
@@ -48,6 +72,7 @@ public class KeybindViewerScreen extends Screen {
     private Integer selectedVirtualKey;
     private Integer hoveredVirtualKey;
     private boolean modPanelOpen;
+    private boolean profilePanelOpen;
     private String selectedModId;
     private String modSearchQuery = "";
     private int modScrollOffset;
@@ -55,24 +80,27 @@ public class KeybindViewerScreen extends Screen {
     private float keyScale;
     private int keyboardX;
     private int keyboardY;
+    private int cachedLayoutWidth = -1;
+    private int cachedLayoutHeight = -1;
+    private KeyboardLayoutData.Style cachedLayoutStyle;
+    private boolean cachedLayoutModOpen;
     private int mousePanelX;
     private int mousePanelY;
+    private int mousePanelH;
     private int detailPanelX;
     private int detailPanelY;
+    private int detailPanelH;
     private int detailPanelW = DETAIL_PANEL_W;
     private int mousePanelW = MOUSE_PANEL_W;
+    private boolean rightRailStacked;
     private int contentTop;
     private int contentBottom;
-    private int detailModifyX = -1;
-    private int detailModifyY = -1;
-    private int detailUnbindX = -1;
-    private int detailUnbindY = -1;
 
-    private record Rect(int x, int y, int w, int h) {
-        boolean contains(double mouseX, double mouseY) {
-            return inside(mouseX, mouseY, x, y, w, h);
-        }
-    }
+    private int toolbarTabsX;
+    private int toolbarTabsW;
+    private int toolbarSearchX;
+    private int toolbarSearchW;
+    private int toolbarLegendX;
 
     public KeybindViewerScreen(Screen parent) {
         super(Component.translatable("screen.newvisualkeybing.viewer.title"));
@@ -82,34 +110,115 @@ public class KeybindViewerScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+        UITheme.setMode(UITheme.Mode.DARK);
         scanner.scan();
 
-        int panelW = width - PANEL_MARGIN * 2;
-        searchBox = new EditBox(font, PANEL_MARGIN + 18, PANEL_MARGIN + 55, Math.max(96, Math.min(260, panelW - 330)), SEARCH_H, Component.translatable("screen.newvisualkeybing.viewer.search"));
+        boolean compact = width < COMPACT_WIDTH_THRESHOLD;
+        if (compact) {
+            modPanelOpen = false;
+            profilePanelOpen = false;
+        }
+
+        int btnH = 22;
+        int btnGap = 4;
+        int btnY = (HEADER_H - btnH) / 2;
+        int btnCloseW = 50;
+        int btnModsW = compact ? 38 : 56;
+        int btnProfilesW = compact ? 52 : 68;
+        int btnManageW = compact ? 48 : 64;
+        int btnLayoutW = compact ? 56 : 78;
+
+        int xClose = width - 8 - btnCloseW;
+        int xMods = xClose - btnGap - btnModsW;
+        int xProfiles = xMods - btnGap - btnProfilesW;
+        int xManage = xProfiles - btnGap - btnManageW;
+        int xLayout = xManage - btnGap - btnLayoutW;
+
+        computeToolbarGeometry(compact);
+
+        int searchBoxY = HEADER_H + (TOOLBAR_H - SEARCH_BH) / 2;
+        searchBox = new EditBox(font, toolbarSearchX, searchBoxY, toolbarSearchW, SEARCH_BH,
+                Component.translatable("screen.newvisualkeybing.viewer.search"));
         searchBox.setHint(Component.translatable("screen.newvisualkeybing.viewer.search"));
         searchBox.setResponder(value -> textFilteredKeys = scanner.filterKeys(value));
         addRenderableWidget(searchBox);
 
-        manageButton = MCButton.create(width - 292, PANEL_MARGIN + 51, 64, 20, Component.translatable("screen.newvisualkeybing.viewer.manage"), button ->
-                minecraft.setScreen(new KeybindEditScreen(this)));
+        layoutButton = MCButton.create(xLayout, btnY, btnLayoutW, btnH,
+                layoutLabel(currentStyle), button -> {
+            currentStyle = currentStyle.next();
+            button.setMessage(layoutLabel(currentStyle));
+        });
+        addRenderableWidget(layoutButton);
+
+        manageButton = MCButton.create(xManage, btnY, btnManageW, btnH,
+                Component.translatable("screen.newvisualkeybing.viewer.manage"),
+                button -> minecraft.setScreen(new KeybindEditScreen(this)));
         addRenderableWidget(manageButton);
 
-        modToggleButton = MCButton.create(width - 222, PANEL_MARGIN + 51, 58, 20, Component.translatable("screen.newvisualkeybing.viewer.mods"), button -> {
+        profileToggleButton = MCButton.create(xProfiles, btnY, btnProfilesW, btnH,
+                Component.translatable("screen.newvisualkeybing.viewer.profiles"), button -> {
+            profilePanelOpen = !profilePanelOpen;
+            if (profilePanelOpen) modPanelOpen = false;
+            invalidateLayoutCache();
+        });
+        addRenderableWidget(profileToggleButton);
+
+        modToggleButton = MCButton.create(xMods, btnY, btnModsW, btnH,
+                Component.translatable("screen.newvisualkeybing.viewer.mods"), button -> {
             modPanelOpen = !modPanelOpen;
-            button.setMessage(Component.translatable("screen.newvisualkeybing.viewer.mods"));
+            if (modPanelOpen) profilePanelOpen = false;
+            invalidateLayoutCache();
         });
         addRenderableWidget(modToggleButton);
 
-        themeButton = MCButton.create(width - 158, PANEL_MARGIN + 51, 64, 20, themeLabel(), button -> {
-            UITheme.setMode(UITheme.getMode() == UITheme.Mode.DARK ? UITheme.Mode.LIGHT : UITheme.Mode.DARK);
-            button.setMessage(themeLabel());
-        });
-        addRenderableWidget(themeButton);
-
-        closeButton = MCButton.create(width - 88, PANEL_MARGIN + 51, 52, 20, Component.translatable("gui.done"), button -> onClose());
+        closeButton = MCButton.create(xClose, btnY, btnCloseW, btnH,
+                Component.translatable("gui.done"), button -> onClose());
         addRenderableWidget(closeButton);
 
         refreshFilters();
+    }
+
+    private void computeToolbarGeometry(boolean compact) {
+        FilterTab[] tabs = FilterTab.values();
+        int tabsW = 0;
+        for (FilterTab t : tabs) tabsW += font.width(t.getLabel()) + 14;
+        tabsW += (tabs.length - 1) * 4;
+
+        int legendW = compact
+                ? 4 * 14 + 3 * 4               // 4 娑擃亜娓鹃悙?+ 3 娑擃亪妫跨捄?
+                : measureLegendWidth();
+        int searchW = SEARCH_W_DEFAULT;
+        int outerPad = 12;
+        int innerGap = 12;
+        int totalAvail = width - outerPad * 2;
+
+        if (tabsW + searchW + legendW + innerGap * 2 > totalAvail) {
+            searchW = Math.max(140, totalAvail - tabsW - legendW - innerGap * 2);
+        }
+
+        toolbarTabsX = outerPad;
+        toolbarTabsW = tabsW;
+        toolbarSearchX = (width - searchW) / 2;
+        toolbarSearchW = searchW;
+        toolbarLegendX = width - outerPad - legendW;
+
+        int afterTabs = toolbarTabsX + tabsW + innerGap;
+        if (toolbarSearchX < afterTabs) toolbarSearchX = afterTabs;
+    }
+
+    private int measureLegendWidth() {
+        int total = 0;
+        String[] keys = {
+                "screen.newvisualkeybing.viewer.legend.free",
+                "screen.newvisualkeybing.viewer.legend.self",
+                "screen.newvisualkeybing.viewer.legend.other",
+                "screen.newvisualkeybing.viewer.legend.conflict"
+        };
+        for (int i = 0; i < keys.length; i++) {
+            total += 8 + 4 + font.width(Component.translatable(keys[i]).getString());
+            if (i < keys.length - 1) total += 10;
+        }
+        return total;
     }
 
     @Override
@@ -121,310 +230,403 @@ public class KeybindViewerScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
-        scanner.refreshIfNeeded();
-        refreshFilters();
+    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        animTick += partialTick;
+        renderBackground(g);
         layoutPanels();
         hoveredVirtualKey = null;
-        detailModifyX = detailModifyY = detailUnbindX = detailUnbindY = -1;
 
-        var colors = UITheme.colors();
-        int panelX = PANEL_MARGIN;
-        int panelY = PANEL_MARGIN;
-        int panelW = width - PANEL_MARGIN * 2;
-        int panelH = height - PANEL_MARGIN * 2;
+        var c = UITheme.colors();
+        g.fill(0, 0, width, height, UITheme.withAlpha(c.panelBg(), 0xE6));
 
-        graphics.fill(0, 0, width, height, UITheme.withAlpha(colors.panelBg(), 0xE0));
-        UITheme.drawCardShadow(graphics, panelX - 2, panelY - 2, panelW + 4, panelH + 4, 12);
-        UITheme.drawGlassPanel(graphics, panelX, panelY, panelW, panelH, 10);
-        // 渐变标题栏
-        UITheme.fillRoundedRect(graphics, panelX, panelY, panelW, 28, 10, UITheme.brighten(colors.headerBg(), 0.04f));
-        UITheme.fillRoundedRect(graphics, panelX, panelY + 14, panelW, 14, 10, colors.headerBg());
-        UITheme.fillRoundedRect(graphics, panelX + 2, panelY + 1, panelW - 4, 2, 2, UITheme.withAlpha(0xFFFFFFFF, 0x18));
-        graphics.fill(panelX + 12, panelY + 27, panelX + panelW - 12, panelY + 28, colors.divider());
-        graphics.drawString(font, title, panelX + 16, panelY + 10, colors.textPrimary(), true);
-        graphics.drawString(font, Component.translatable("screen.newvisualkeybing.viewer.subtitle"), panelX + 16, panelY + 32, colors.textSecondary(), false);
+        renderHeaderBar(g);
+        renderToolbar(g, mouseX, mouseY);
 
-        renderTabs(graphics, panelX + 16, panelY + 84, mouseX, mouseY);
-        renderLegend(graphics, panelX + 16, panelY + 112);
-        if (modPanelOpen) {
-            renderModPanel(graphics, mouseX, mouseY);
+        if (modPanelOpen && width >= COMPACT_WIDTH_THRESHOLD) {
+            renderModPanel(g, mouseX, mouseY);
+        } else if (profilePanelOpen && width >= COMPACT_WIDTH_THRESHOLD) {
+            int x = BODY_PAD;
+            int y = contentTop;
+            int h = contentBottom - contentTop;
+            profilePanel.render(g, font, x, y, h, mouseX, mouseY);
         }
-        renderKeyboard(graphics, mouseX, mouseY);
-        renderMousePanel(graphics, mouseX, mouseY);
-        renderDetailPanel(graphics, selectedVirtualKey != null ? selectedVirtualKey : hoveredVirtualKey, mouseX, mouseY);
-        renderStatusBar(graphics, panelX, panelY, panelW, panelH);
-        super.render(graphics, mouseX, mouseY, partialTick);
+
+        renderKeyboard(g, mouseX, mouseY);
+        renderMousePanel(g, mouseX, mouseY);
+        renderDetailPanel(g, selectedVirtualKey != null ? selectedVirtualKey : hoveredVirtualKey, mouseX, mouseY);
+        renderStatusBar(g);
+
+        super.render(g, mouseX, mouseY, partialTick);
+
+        if (hoveredVirtualKey != null
+                && (selectedVirtualKey == null || hoveredVirtualKey.intValue() != selectedVirtualKey.intValue())) {
+            tooltipRenderer.render(g, font, width, height, hoveredVirtualKey, mouseX, mouseY);
+        }
+
+        renderNotice(g);
     }
 
-    private void renderTabs(GuiGraphics graphics, int x, int y, int mouseX, int mouseY) {
-        int currentX = x;
-        for (FilterTab tab : FilterTab.values()) {
-            String label = tab.getLabel();
-            int w = font.width(label) + 16;
+    private void renderHeaderBar(GuiGraphics g) {
+        var c = UITheme.colors();
+        UITheme.fillGradient(g, 0, 0, width, HEADER_H,
+                UITheme.lerpColor(c.headerBg(), c.panelBg(), 0.10f),
+                c.headerBg());
+        g.fill(0, HEADER_H - 1, width, HEADER_H, c.divider());
+        g.fill(0, HEADER_H, width, HEADER_H + 1, UITheme.withAlpha(c.accent(), 0x70));
+
+        g.drawString(font, title, 12, (HEADER_H - font.lineHeight) / 2, c.textPrimary(), true);
+    }
+
+    private void renderToolbar(GuiGraphics g, int mouseX, int mouseY) {
+        var c = UITheme.colors();
+        int y = HEADER_H;
+        UITheme.fillGradient(g, 0, y, width, y + TOOLBAR_H,
+                c.headerBg(), UITheme.lerpColor(c.headerBg(), c.panelBg(), 0.55f));
+        g.fill(0, y + TOOLBAR_H - 1, width, y + TOOLBAR_H, c.divider());
+
+        renderToolbarTabs(g, mouseX, mouseY);
+        renderToolbarSearchFrame(g);
+        renderToolbarLegend(g, mouseX, mouseY);
+    }
+
+    private void renderToolbarTabs(GuiGraphics g, int mouseX, int mouseY) {
+        var c = UITheme.colors();
+        FilterTab[] tabs = FilterTab.values();
+        int x = toolbarTabsX;
+        int y = HEADER_H + 4;
+        int h = TOOLBAR_H - 8;
+        for (FilterTab tab : tabs) {
+            int w = font.width(tab.getLabel()) + 14;
             boolean active = tab == activeFilter;
-            boolean hovered = inside(mouseX, mouseY, currentX, y, w, TAB_H);
+            boolean hovered = inside(mouseX, mouseY, x, y, w, h);
             int fill = active
-                    ? UITheme.lerpColor(UITheme.colors().widgetBg(), UITheme.colors().accent(), 0.55f)
-                    : hovered ? UITheme.lerpColor(UITheme.colors().widgetBg(), UITheme.colors().accentAlt(), 0.24f) : UITheme.colors().widgetBg();
-            UITheme.fillRoundedRect(graphics, currentX, y, w, TAB_H, 8, fill);
-            UITheme.drawRoundedBorder(graphics, currentX, y, w, TAB_H, 8, active ? UITheme.colors().accent() : UITheme.colors().widgetBorder());
-            graphics.drawString(font, label, currentX + 8, y + 7, active ? 0xFFFFFFFF : UITheme.colors().textSecondary(), false);
-            currentX += w + 6;
+                    ? UITheme.lerpColor(c.widgetBg(), c.accent(), 0.55f)
+                    : hovered ? UITheme.lerpColor(c.widgetBg(), c.accentAlt(), 0.20f) : c.widgetBg();
+            UITheme.fillRoundedRect(g, x, y, w, h, h / 2, fill);
+            UITheme.drawRoundedBorder(g, x, y, w, h, h / 2,
+                    active ? c.accent() : UITheme.withAlpha(c.widgetBorder(), 0xB0));
+            g.drawString(font, tab.getLabel(), x + 7, y + (h - font.lineHeight) / 2,
+                    active ? 0xFFFFFFFF : c.textSecondary(), false);
+            x += w + 4;
         }
     }
 
-    private void renderLegend(GuiGraphics graphics, int x, int y) {
-        renderBadge(graphics, x, y, Component.translatable("screen.newvisualkeybing.viewer.legend.free").getString(), UITheme.colors().widgetBg());
-        renderBadge(graphics, x + 68, y, Component.translatable("screen.newvisualkeybing.viewer.legend.self").getString(), UITheme.colors().accent());
-        renderBadge(graphics, x + 136, y, Component.translatable("screen.newvisualkeybing.viewer.legend.other").getString(), UITheme.colors().success());
-        renderBadge(graphics, x + 214, y, Component.translatable("screen.newvisualkeybing.viewer.legend.conflict").getString(), UITheme.colors().danger());
+    private void renderToolbarSearchFrame(GuiGraphics g) {
+        var c = UITheme.colors();
+        int sx = toolbarSearchX - 3;
+        int sy = HEADER_H + (TOOLBAR_H - SEARCH_BH) / 2 - 3;
+        int sw = toolbarSearchW + 6;
+        int sh = SEARCH_BH + 6;
+        int focusColor = searchBox != null && searchBox.isFocused() ? c.accent() : UITheme.withAlpha(c.accent(), 0x40);
+        UITheme.drawRoundedBorder(g, sx, sy, sw, sh, 6, focusColor);
     }
 
-    private void renderBadge(GuiGraphics graphics, int x, int y, String label, int color) {
-        int w = font.width(label) + 14;
-        UITheme.fillRoundedRect(graphics, x, y, w, 16, 8, color);
-        graphics.drawString(font, label, x + 7, y + 4, 0xFFFFFFFF, false);
+    private void renderToolbarLegend(GuiGraphics g, int mouseX, int mouseY) {
+        var c = UITheme.colors();
+        boolean compact = width < COMPACT_WIDTH_THRESHOLD;
+        int x = toolbarLegendX;
+        int y = HEADER_H + (TOOLBAR_H - 12) / 2;
+
+        String[] labels = {
+                Component.translatable("screen.newvisualkeybing.viewer.legend.free").getString(),
+                Component.translatable("screen.newvisualkeybing.viewer.legend.self").getString(),
+                Component.translatable("screen.newvisualkeybing.viewer.legend.other").getString(),
+                Component.translatable("screen.newvisualkeybing.viewer.legend.conflict").getString()
+        };
+        int[] colors = { c.widgetBorder(), c.accent(), c.success(), c.danger() };
+
+        for (int i = 0; i < labels.length; i++) {
+            UITheme.fillRoundedRect(g, x, y + 2, 8, 8, 4, colors[i]);
+            UITheme.drawRoundedBorder(g, x, y + 2, 8, 8, 4, UITheme.withAlpha(0xFFFFFF, 0x30));
+            x += 8;
+            if (!compact) {
+                x += 4;
+                g.drawString(font, labels[i], x, y + 2, c.textSecondary(), false);
+                x += font.width(labels[i]);
+            }
+            if (i < labels.length - 1) x += 10;
+        }
     }
 
-    private void renderModPanel(GuiGraphics graphics, int mouseX, int mouseY) {
-        var colors = UITheme.colors();
-        int x = PANEL_MARGIN + 14;
+    private void renderStatusBar(GuiGraphics g) {
+        var c = UITheme.colors();
+        int y = height - STATUS_H;
+        UITheme.fillGradient(g, 0, y, width, height,
+                UITheme.lerpColor(c.headerBg(), c.panelBg(), 0.50f),
+                c.headerBg());
+        g.fill(0, y, width, y + 1, c.divider());
+
+        KeyBindingScanner.ScanStats stats = scanner.getStats();
+        int chipY = y + (STATUS_H - 14) / 2;
+        int x = 10;
+
+        x = renderStatChip(g, x, chipY, c.widgetBorder(),
+                Component.translatable("screen.newvisualkeybing.viewer.legend.free").getString(),
+                stats.free());
+        x += 6;
+        x = renderStatChip(g, x, chipY, c.accent(),
+                Component.translatable("screen.newvisualkeybing.viewer.legend.self").getString(),
+                stats.self());
+        x += 6;
+        x = renderStatChip(g, x, chipY, c.success(),
+                Component.translatable("screen.newvisualkeybing.viewer.legend.other").getString(),
+                stats.other());
+        x += 6;
+        x = renderStatChip(g, x, chipY, c.danger(),
+                Component.translatable("screen.newvisualkeybing.viewer.legend.conflict").getString(),
+                stats.conflict());
+
+        int textY = y + (STATUS_H - font.lineHeight) / 2;
+        String scale = Component.translatable("screen.newvisualkeybing.viewer.scale", Math.round(keyScale)).getString();
+        String layoutName = layoutLabel(currentStyle).getString();
+        String middle = layoutName + "  璺? " + scale;
+        g.drawString(font, middle, (width - font.width(middle)) / 2, textY, c.textMuted(), false);
+
+        String hint = Component.translatable("screen.newvisualkeybing.viewer.hint").getString();
+        g.drawString(font, hint, width - font.width(hint) - 10, textY, c.textMuted(), false);
+    }
+
+    private int renderStatChip(GuiGraphics g, int x, int y, int dotColor, String label, int count) {
+        var c = UITheme.colors();
+        String text = count + " " + label;
+        int chipW = font.width(text) + 18;
+        int chipH = 14;
+        int fill = UITheme.lerpColor(c.widgetBg(), dotColor, 0.14f);
+        UITheme.fillRoundedRect(g, x, y, chipW, chipH, chipH / 2, fill);
+        UITheme.drawRoundedBorder(g, x, y, chipW, chipH, chipH / 2, UITheme.withAlpha(dotColor, 0x90));
+        UITheme.fillRoundedRect(g, x + 5, y + (chipH - 5) / 2, 5, 5, 2, dotColor);
+        g.drawString(font, text, x + 13, y + (chipH - font.lineHeight) / 2 + 1, c.textSecondary(), false);
+        return x + chipW;
+    }
+
+    static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int x, int y, int w, int h, String title) {
+        var c = UITheme.colors();
+        UITheme.drawGlassPanel(g, x, y, w, h, PANEL_RADIUS);
+        g.drawString(font, title, x + PANEL_PAD, y + PANEL_TITLE_Y, c.textPrimary(), false);
+        int divY = y + PANEL_TITLE_Y + font.lineHeight + 4;
+        g.fill(x + PANEL_PAD, divY, x + w - PANEL_PAD, divY + 1, UITheme.withAlpha(c.divider(), 0xA0));
+        return y + PANEL_CONTENT_TOP;
+    }
+
+    private void renderModPanel(GuiGraphics g, int mouseX, int mouseY) {
+        var c = UITheme.colors();
+        int x = BODY_PAD;
         int y = contentTop;
         int w = MOD_PANEL_W;
         int h = contentBottom - contentTop;
-        UITheme.drawGlassPanel(graphics, x, y, w, h, 10);
-        graphics.drawString(font, Component.translatable("screen.newvisualkeybing.viewer.mods"), x + 12, y + 12, colors.textPrimary(), false);
+        int contentY = paintPanelBase(g, font, x, y, w, h,
+                Component.translatable("screen.newvisualkeybing.viewer.mods").getString());
 
-        int searchY = y + 30;
-        UITheme.fillRoundedRect(graphics, x + 8, searchY, w - 16, 18, 6, colors.inputBg());
-        UITheme.drawRoundedBorder(graphics, x + 8, searchY, w - 16, 18, 6, colors.widgetBorder());
-        String display = modSearchQuery.isBlank() ? Component.translatable("screen.newvisualkeybing.viewer.mod_search").getString() : modSearchQuery;
-        graphics.drawString(font, display, x + 14, searchY + 5, modSearchQuery.isBlank() ? colors.textMuted() : colors.textPrimary(), false);
+        int fieldX = x + PANEL_PAD;
+        int fieldW = w - PANEL_PAD * 2;
+        int searchY = contentY + 4;
+        UITheme.fillRoundedRect(g, fieldX, searchY, fieldW, 18, 6, c.inputBg());
+        UITheme.drawRoundedBorder(g, fieldX, searchY, fieldW, 18, 6, c.widgetBorder());
+        String display = modSearchQuery.isBlank()
+                ? Component.translatable("screen.newvisualkeybing.viewer.mod_search").getString()
+                : modSearchQuery;
+        g.drawString(font, display, fieldX + 6, searchY + 5,
+                modSearchQuery.isBlank() ? c.textMuted() : c.textPrimary(), false);
 
+        int listY = searchY + 26;
+        int listBottom = y + h - PANEL_PAD - ACTION_BTN_H - ACTION_BTN_GAP;
         List<Map.Entry<String, String>> mods = filteredModEntries();
-        int rowY = searchY + 28;
         int rowH = 18;
-        int visibleRows = Math.max(1, (h - 74) / rowH);
+        int visibleRows = Math.max(1, (listBottom - listY) / rowH);
         modScrollOffset = Mth.clamp(modScrollOffset, 0, Math.max(0, mods.size() - visibleRows));
+
+        int rowY = listY;
         for (int i = modScrollOffset; i < mods.size() && i < modScrollOffset + visibleRows; i++) {
             Map.Entry<String, String> mod = mods.get(i);
             boolean selected = mod.getKey().equals(selectedModId);
-            boolean hovered = inside(mouseX, mouseY, x + 8, rowY, w - 16, rowH - 1);
-            int fill = selected ? UITheme.lerpColor(colors.widgetBg(), colors.accent(), 0.40f)
-                    : hovered ? UITheme.lerpColor(colors.widgetBg(), colors.accentAlt(), 0.16f) : colors.widgetBg();
-            UITheme.fillRoundedRect(graphics, x + 8, rowY, w - 16, rowH - 1, 6, fill);
-            graphics.drawString(font, trim(mod.getValue(), 18), x + 14, rowY + 5, selected ? 0xFFFFFFFF : colors.textSecondary(), false);
+            boolean hovered = inside(mouseX, mouseY, fieldX, rowY, fieldW, rowH - 1);
+            int fill = selected ? UITheme.lerpColor(c.widgetBg(), c.accent(), 0.40f)
+                    : hovered ? UITheme.lerpColor(c.widgetBg(), c.accentAlt(), 0.18f) : c.widgetBg();
+            UITheme.fillRoundedRect(g, fieldX, rowY, fieldW, rowH - 1, 5, fill);
+            if (!selected && !hovered && i < mods.size() - 1
+                    && i < modScrollOffset + visibleRows - 1) {
+                g.fill(fieldX + 6, rowY + rowH - 2, fieldX + fieldW - 6, rowY + rowH - 1,
+                        UITheme.withAlpha(c.divider(), 0x30));
+            }
+            String modName = trim(mod.getValue(), 18);
+            g.drawString(font, modName, fieldX + 6, rowY + 5,
+                    selected ? 0xFFFFFFFF : c.textSecondary(), false);
             rowY += rowH;
         }
 
-        int clearY = y + h - 28;
-        UITheme.fillRoundedRect(graphics, x + 8, clearY, w - 16, 18, 6, selectedModId == null ? colors.widgetBg() : UITheme.lerpColor(colors.widgetBg(), colors.danger(), 0.25f));
-        UITheme.drawRoundedBorder(graphics, x + 8, clearY, w - 16, 18, 6, colors.widgetBorder());
-        graphics.drawString(font, Component.translatable("screen.newvisualkeybing.viewer.clear_mod").getString(), x + 20, clearY + 5, selectedModId == null ? colors.textMuted() : colors.textPrimary(), false);
+        int actionY = y + h - PANEL_PAD - ACTION_BTN_H;
+        boolean clearHover = inside(mouseX, mouseY, fieldX, actionY, fieldW, ACTION_BTN_H);
+        renderActionButton(g, font, fieldX, actionY, fieldW, ACTION_BTN_H,
+                Component.translatable("screen.newvisualkeybing.viewer.clear_mod").getString(),
+                selectedModId == null ? c.widgetBorder() : c.danger(), clearHover);
     }
 
-    private void renderKeyboard(GuiGraphics graphics, int mouseX, int mouseY) {
-        for (KeyboardLayoutData.KeyDef key : KeyboardLayoutData.KEYS) {
-            int x = key.screenX(keyboardX, keyScale);
-            int y = key.screenY(keyboardY, keyScale);
-            int w = key.screenW(keyScale);
-            int h = key.screenH(keyScale);
-
-            boolean matched = isVisibleKey(key.glfwKey());
-            boolean hovered = inside(mouseX, mouseY, x, y, w, h);
-            boolean selected = selectedVirtualKey != null && selectedVirtualKey == key.glfwKey();
-            if (hovered) {
-                hoveredVirtualKey = key.glfwKey();
-            }
-
-            KeyBindingScanner.KeyStatus status = scanner.getStatus(key.glfwKey());
-            int fill = keyStatusColor(status, matched);
-            UITheme.fillRoundedRect(graphics, x, y, w, h, w >= 34 || h >= 34 ? 4 : 3, fill);
-            UITheme.drawRoundedBorder(graphics, x, y, w, h, w >= 34 || h >= 34 ? 4 : 3, selected ? UITheme.colors().accent() : hovered ? UITheme.colors().accentAlt() : UITheme.colors().widgetBorder());
-
-            int labelColor = matched ? UITheme.colors().textPrimary() : UITheme.colors().textMuted();
-            int tx = x + (w - font.width(key.label())) / 2;
-            int ty = y + (h - font.lineHeight) / 2;
-            graphics.drawString(font, key.label(), tx, ty, labelColor, false);
-
-            List<KeyBindingScanner.KeyBindingInfo> bindings = scanner.getBindings(key.glfwKey());
-            if (!bindings.isEmpty()) {
-                String count = String.valueOf(bindings.size());
-                graphics.drawString(font, count, x + w - font.width(count) - 3, y + 3, UITheme.colors().accentAlt(), false);
-            }
-        }
+    private void renderKeyboard(GuiGraphics g, int mouseX, int mouseY) {
+        Integer hover = keyboardRenderer.render(g, font, currentStyle,
+                keyboardX, keyboardY, keyScale,
+                selectedVirtualKey, this::isVisibleKey, mouseX, mouseY, animTick);
+        if (hover != null) hoveredVirtualKey = hover;
     }
 
-    private void renderMousePanel(GuiGraphics graphics, int mouseX, int mouseY) {
-        var colors = UITheme.colors();
-        int panelH = Math.min(194, Math.max(166, contentBottom - mousePanelY));
-        UITheme.drawGlassPanel(graphics, mousePanelX, mousePanelY, mousePanelW, panelH, 10);
-        graphics.drawString(font, Component.translatable("screen.newvisualkeybing.viewer.mouse"), mousePanelX + 12, mousePanelY + 12, colors.textPrimary(), false);
 
-        int textureW = Math.min(mousePanelW - 30, 104);
-        int textureH = Math.min(panelH - 42, Math.round(textureW * 1.50f));
-        int textureX = mousePanelX + (mousePanelW - textureW) / 2 + 6;
-        int textureY = mousePanelY + 34;
-
-        graphics.blit(MOUSE_TEXTURE, textureX, textureY, textureW, textureH, 0.0f, 0.0f, MOUSE_TEXTURE_W, MOUSE_TEXTURE_H, MOUSE_TEXTURE_W, MOUSE_TEXTURE_H);
-
-        for (int i = 0; i < KeyboardLayoutData.MOUSE_KEYS.size(); i++) {
-            Rect bounds = mouseKeyBounds(i);
-            if (bounds != null) {
-                renderMouseKey(graphics, mouseX, mouseY, KeyboardLayoutData.MOUSE_KEYS.get(i), bounds.x(), bounds.y(), bounds.w(), bounds.h(), i == 1);
-            }
-        }
-    }
-
-    private void renderMouseKey(GuiGraphics graphics, int mouseX, int mouseY, KeyboardLayoutData.KeyDef key, int x, int y, int w, int h, boolean wheel) {
-        int mouseButton = KeyboardLayoutData.virtualToMouseBtn(key.glfwKey());
-        boolean matched = isVisibleKey(key.glfwKey());
-        boolean hovered = inside(mouseX, mouseY, x, y, w, h);
-        boolean selected = selectedVirtualKey != null && selectedVirtualKey == key.glfwKey();
-        if (hovered) {
-            hoveredVirtualKey = key.glfwKey();
-        }
-
-        int fill = UITheme.withAlpha(keyStatusColor(scanner.getMouseStatus(mouseButton), matched), wheel ? 0x8A : 0x72);
-        UITheme.fillRoundedRect(graphics, x, y, w, h, Math.max(3, Math.min(8, w / 3)), fill);
-        UITheme.drawRoundedBorder(graphics, x, y, w, h, Math.max(3, Math.min(8, w / 3)), selected ? UITheme.colors().accent() : hovered ? UITheme.colors().accentAlt() : UITheme.withAlpha(UITheme.colors().widgetBorder(), 0x86));
-        if (w >= 16) {
-            graphics.drawString(font, key.label(), x + (w - font.width(key.label())) / 2, y + (h - font.lineHeight) / 2, matched ? UITheme.colors().textPrimary() : UITheme.colors().textMuted(), false);
-        }
-    }
-
-    private Rect mouseKeyBounds(int index) {
-        int textureW = Math.min(mousePanelW - 30, 104);
-        int panelH = Math.min(194, Math.max(166, contentBottom - mousePanelY));
-        int textureH = Math.min(panelH - 42, Math.round(textureW * 1.50f));
-        int x = mousePanelX + (mousePanelW - textureW) / 2 + 6;
-        int y = mousePanelY + 34;
-
-        return switch (index) {
-            case 0 -> relRect(x, y, textureW, textureH, 0.245f, 0.080f, 0.235f, 0.360f);
-            case 1 -> relRect(x, y, textureW, textureH, 0.455f, 0.112f, 0.110f, 0.335f);
-            case 2 -> relRect(x, y, textureW, textureH, 0.580f, 0.080f, 0.245f, 0.360f);
-            case 3 -> relRect(x, y, textureW, textureH, 0.080f, 0.350f, 0.120f, 0.165f);
-            case 4 -> relRect(x, y, textureW, textureH, 0.090f, 0.525f, 0.125f, 0.175f);
-            default -> null;
+    private Component layoutLabel(KeyboardLayoutData.Style style) {
+        return switch (style) {
+            case ANSI_104   -> Component.translatable("screen.newvisualkeybing.viewer.layout.ansi_104");
+            case KEYS_98    -> Component.translatable("screen.newvisualkeybing.viewer.layout.keys_98");
+            case TKL_87     -> Component.translatable("screen.newvisualkeybing.viewer.layout.tkl_87");
+            case COMPACT_60 -> Component.translatable("screen.newvisualkeybing.viewer.layout.compact_60");
         };
     }
 
-    private static Rect relRect(int x, int y, int w, int h, float rx, float ry, float rw, float rh) {
-        return new Rect(
-                x + Math.round(w * rx),
-                y + Math.round(h * ry),
-                Math.max(8, Math.round(w * rw)),
-                Math.max(8, Math.round(h * rh))
-        );
+    private void renderMousePanel(GuiGraphics g, int mouseX, int mouseY) {
+        Integer hover = mouseRenderer.render(g, font, mousePanelX, mousePanelY, mousePanelW, mousePanelH,
+                selectedVirtualKey, this::isVisibleKey, mouseX, mouseY, animTick);
+        if (hover != null) hoveredVirtualKey = hover;
     }
 
-    private void renderDetailPanel(GuiGraphics graphics, Integer virtualKey, int mouseX, int mouseY) {
-        var colors = UITheme.colors();
-        UITheme.drawGlassPanel(graphics, detailPanelX, detailPanelY, detailPanelW, contentBottom - contentTop, 10);
 
-        String titleText = Component.translatable("screen.newvisualkeybing.viewer.details").getString();
-        graphics.drawString(font, titleText, detailPanelX + 12, detailPanelY + 12, colors.textPrimary(), false);
-
-        if (virtualKey == null) {
-            graphics.drawString(font, Component.translatable("screen.newvisualkeybing.viewer.hover_hint"), detailPanelX + 12, detailPanelY + 34, colors.textMuted(), false);
-            return;
-        }
-
-        String keyName = KeyboardLayoutData.isMouse(virtualKey)
-                ? KeyBindingScanner.getMouseButtonLabel(KeyboardLayoutData.virtualToMouseBtn(virtualKey))
-                : scanner.getKeyLabel(virtualKey);
-        graphics.drawString(font, keyName, detailPanelX + 12, detailPanelY + 34, colors.accent(), false);
-
-        List<KeyBindingScanner.KeyBindingInfo> bindings = KeyboardLayoutData.isMouse(virtualKey)
-                ? scanner.getMouseBindings(KeyboardLayoutData.virtualToMouseBtn(virtualKey))
-                : scanner.getBindings(virtualKey);
-        KeyBindingScanner.KeyStatus status = KeyboardLayoutData.isMouse(virtualKey)
-                ? scanner.getMouseStatus(KeyboardLayoutData.virtualToMouseBtn(virtualKey))
-                : scanner.getStatus(virtualKey);
-
-        graphics.drawString(font, Component.translatable(statusTranslation(status)).getString(), detailPanelX + 12, detailPanelY + 49, keyStatusColor(status, true), false);
-
-        int lineY = detailPanelY + 68;
-        if (bindings.isEmpty()) {
-            graphics.drawString(font, Component.translatable("screen.newvisualkeybing.viewer.unbound"), detailPanelX + 12, lineY, colors.textMuted(), false);
-        } else {
-            for (int i = 0; i < bindings.size() && i < 8; i++) {
-                KeyBindingScanner.KeyBindingInfo info = bindings.get(i);
-                graphics.drawString(font, "• " + trim(info.actionName(), 24), detailPanelX + 12, lineY, info.self() ? colors.accent() : colors.textPrimary(), false);
-                lineY += 11;
-                graphics.drawString(font, trim(info.modName(), 24), detailPanelX + 20, lineY, colors.textSecondary(), false);
-                lineY += 15;
-            }
-        }
-
-        detailModifyX = detailPanelX + 12;
-        detailModifyY = detailPanelY + (contentBottom - contentTop) - 54;
-        int btnW = Math.max(74, (detailPanelW - 32) / 2);
-        boolean modifyHover = inside(mouseX, mouseY, detailModifyX, detailModifyY, btnW, 18);
-        UITheme.fillRoundedRect(graphics, detailModifyX, detailModifyY, btnW, 18, 6, UITheme.lerpColor(colors.widgetBg(), colors.accent(), modifyHover ? 0.48f : 0.26f));
-        UITheme.drawRoundedBorder(graphics, detailModifyX, detailModifyY, btnW, 18, 6, colors.widgetBorder());
-        String modifyText = Component.translatable("screen.newvisualkeybing.viewer.modify").getString();
-        graphics.drawString(font, modifyText, detailModifyX + (btnW - font.width(modifyText)) / 2, detailModifyY + 5, colors.textPrimary(), false);
-
-        detailUnbindX = detailModifyX + btnW + 8;
-        detailUnbindY = detailModifyY;
-        boolean unbindHover = inside(mouseX, mouseY, detailUnbindX, detailUnbindY, btnW, 18);
-        UITheme.fillRoundedRect(graphics, detailUnbindX, detailUnbindY, btnW, 18, 6, UITheme.lerpColor(colors.widgetBg(), colors.danger(), unbindHover ? 0.40f : 0.22f));
-        UITheme.drawRoundedBorder(graphics, detailUnbindX, detailUnbindY, btnW, 18, 6, colors.widgetBorder());
-        String unbindText = Component.translatable("screen.newvisualkeybing.viewer.unbind").getString();
-        graphics.drawString(font, unbindText, detailUnbindX + (btnW - font.width(unbindText)) / 2, detailUnbindY + 5, colors.textPrimary(), false);
+    private void renderDetailPanel(GuiGraphics g, Integer virtualKey, int mouseX, int mouseY) {
+        detailPanel.render(g, font, detailPanelX, detailPanelY, detailPanelW, detailPanelH,
+                virtualKey, mouseX, mouseY);
     }
 
-    private void renderStatusBar(GuiGraphics graphics, int panelX, int panelY, int panelW, int panelH) {
-        KeyBindingScanner.ScanStats stats = scanner.getStats();
-        int y = panelY + panelH - STATUS_H;
-        graphics.fill(panelX + 12, y, panelX + panelW - 12, y + 1, UITheme.colors().divider());
-        String summary = Component.translatable(
-                "screen.newvisualkeybing.viewer.stats",
-                stats.total(),
-                stats.free(),
-                stats.self(),
-                stats.other(),
-                stats.conflict()
-        ).getString();
-        graphics.drawString(font, summary, panelX + 16, y + 8, UITheme.colors().textSecondary(), false);
-        String hint = Component.translatable("screen.newvisualkeybing.viewer.hint").getString();
-        graphics.drawString(font, hint, panelX + panelW - font.width(hint) - 16, y + 8, UITheme.colors().textMuted(), false);
+    static String fitToWidth(net.minecraft.client.gui.Font font, String text, int maxW) {
+        if (font.width(text) <= maxW) return text;
+        String ellipsis = "..";
+        int eW = font.width(ellipsis);
+        if (maxW <= eW) return ellipsis;
+        StringBuilder sb = new StringBuilder();
+        int w = 0;
+        for (int i = 0; i < text.length(); i++) {
+            int cw = font.width(String.valueOf(text.charAt(i)));
+            if (w + cw + eW > maxW) break;
+            sb.append(text.charAt(i));
+            w += cw;
+        }
+        return sb.append(ellipsis).toString();
+    }
+
+    static void renderActionButton(GuiGraphics g, net.minecraft.client.gui.Font font,
+                                   int x, int y, int w, int h, String label, int accent, boolean hovered) {
+        var c = UITheme.colors();
+        int fill = UITheme.lerpColor(c.widgetBg(), accent, hovered ? 0.50f : 0.26f);
+        UITheme.fillRoundedRect(g, x, y, w, h, h / 3, fill);
+        UITheme.drawRoundedBorder(g, x, y, w, h, h / 3, UITheme.withAlpha(accent, 0xC0));
+        UITheme.fillRoundedRect(g, x + 1, y + 1, w - 2, 1, h / 3, UITheme.withAlpha(0xFFFFFF, hovered ? 0x18 : 0x10));
+        g.drawString(font, label,
+                x + (w - font.width(label)) / 2,
+                y + (h - font.lineHeight) / 2,
+                c.textPrimary(), false);
+    }
+
+    private void renderHoverTooltip(GuiGraphics g, int virtualKey, int mouseX, int mouseY) {
+        tooltipRenderer.render(g, font, width, height, virtualKey, mouseX, mouseY);
+    }
+
+
+    private void renderNotice(GuiGraphics g) {
+        if (noticeMsg == null) return;
+        long elapsed = System.currentTimeMillis() - noticeTime;
+        if (elapsed > 2500) { noticeMsg = null; return; }
+        float alpha = elapsed < 300 ? elapsed / 300f
+                : elapsed > 2000 ? (2500f - elapsed) / 500f
+                : 1f;
+        var c = UITheme.colors();
+        int alpha255 = Math.round(alpha * 0xE6);
+        int textColor = UITheme.withAlpha(c.textPrimary(), alpha255);
+        int bgColor = UITheme.withAlpha(c.headerBg(), Math.round(alpha * 0xCC));
+        int accent = UITheme.withAlpha(c.accent(), Math.round(alpha * 0xC0));
+
+        int textW = font.width(noticeMsg);
+        int padX = 12;
+        int padY = 6;
+        int boxW = textW + padX * 2;
+        int boxH = font.lineHeight + padY * 2;
+        int boxX = (width - boxW) / 2;
+        int boxY = height - STATUS_H - boxH - 8;
+
+        UITheme.fillRoundedRect(g, boxX, boxY, boxW, boxH, 8, bgColor);
+        UITheme.drawRoundedBorder(g, boxX, boxY, boxW, boxH, 8, accent);
+        UITheme.fillRoundedRect(g, boxX, boxY, boxW, 2, 2, accent);
+        g.drawString(font, noticeMsg, boxX + padX, boxY + padY, textColor, false);
+    }
+
+    private void showNotice(String msg) {
+        this.noticeMsg = msg;
+        this.noticeTime = System.currentTimeMillis();
+    }
+
+    private void onProfileMutation() {
+        scanner.scan();
+        refreshFilters();
+    }
+
+    private void invalidateLayoutCache() {
+        cachedLayoutWidth = -1;
+        cachedLayoutHeight = -1;
     }
 
     private void layoutPanels() {
-        int leftInset = modPanelOpen ? MOD_PANEL_W + 16 : 12;
-        int panelX = PANEL_MARGIN;
-        int panelW = width - PANEL_MARGIN * 2;
-        contentTop = PANEL_MARGIN + HEADER_H + 34;
-        contentBottom = height - PANEL_MARGIN - STATUS_H - 8;
+        boolean leftRailOpen = modPanelOpen || profilePanelOpen;
+        if (width == cachedLayoutWidth && height == cachedLayoutHeight
+                && currentStyle == cachedLayoutStyle && leftRailOpen == cachedLayoutModOpen) {
+            return;
+        }
+        cachedLayoutWidth = width;
+        cachedLayoutHeight = height;
+        cachedLayoutStyle = currentStyle;
+        cachedLayoutModOpen = leftRailOpen;
 
-        float uiScale = Mth.clamp(Math.min(width / 980.0f, height / 560.0f), 0.78f, 1.0f);
-        detailPanelW = Mth.clamp(Math.round(DETAIL_PANEL_W * uiScale), 170, DETAIL_PANEL_W);
-        mousePanelW = Mth.clamp(Math.round(MOUSE_PANEL_W * uiScale), 126, MOUSE_PANEL_W);
+        boolean compact = width < COMPACT_WIDTH_THRESHOLD;
+        contentTop = HEADER_H + TOOLBAR_H + CHROME_GAP;
+        contentBottom = height - STATUS_H - 6;
+        int bodyH = contentBottom - contentTop;
 
-        detailPanelX = panelX + panelW - detailPanelW - 12;
-        detailPanelY = contentTop;
-        mousePanelX = detailPanelX - mousePanelW - 12;
-        mousePanelY = contentTop;
+        float uiScale = Mth.clamp(Math.min(width / 980.0f, height / 560.0f), 0.78f, 1.10f);
+        int detailW = Mth.clamp(Math.round(DETAIL_PANEL_W * uiScale), 188, 250);
+        int mouseW = Mth.clamp(Math.round(MOUSE_PANEL_W * uiScale), 124, 154);
 
-        int keyboardLeft = panelX + leftInset;
-        int keyboardRight = mousePanelX - 16;
+        rightRailStacked = width < RIGHT_RAIL_STACK_THRESHOLD || bodyH > width * 0.46f;
+
+        if (rightRailStacked) {
+            int railW = Math.max(detailW, mouseW);
+            detailPanelW = railW;
+            mousePanelW = railW;
+            mousePanelX = width - BODY_PAD - railW;
+            mousePanelY = contentTop;
+            mousePanelH = Math.min(MOUSE_PANEL_STACK_H, Math.max(128, bodyH / 3));
+            detailPanelX = mousePanelX;
+            detailPanelY = mousePanelY + mousePanelH + COL_GAP;
+            detailPanelH = Math.max(96, contentBottom - detailPanelY);
+        } else {
+            detailPanelW = detailW;
+            mousePanelW = mouseW;
+            detailPanelX = width - BODY_PAD - detailPanelW;
+            detailPanelY = contentTop;
+            detailPanelH = bodyH;
+            mousePanelX = detailPanelX - COL_GAP - mousePanelW;
+            mousePanelY = contentTop;
+            mousePanelH = bodyH;
+        }
+
+        int leftRailW = profilePanelOpen ? KeybindProfilePanel.WIDTH : MOD_PANEL_W;
+        int leftMargin = (leftRailOpen && !compact) ? BODY_PAD + leftRailW + COL_GAP : BODY_PAD;
+        int keyboardLeft = leftMargin;
+        int keyboardRight = (rightRailStacked ? detailPanelX : mousePanelX) - COL_GAP;
         int keyboardSpaceW = keyboardRight - keyboardLeft;
-        int keyboardSpaceH = contentBottom - contentTop;
-        float keyboardGapW = (KeyboardLayoutData.TOTAL_WIDTH_U - 1.0f) * KeyboardLayoutData.BASE_GAP;
-        float keyboardGapH = (KeyboardLayoutData.TOTAL_HEIGHT_U - 1.0f) * KeyboardLayoutData.BASE_GAP;
-        float scaleByW = (keyboardSpaceW - keyboardGapW) / KeyboardLayoutData.TOTAL_WIDTH_U;
-        float scaleByH = (keyboardSpaceH - keyboardGapH) / KeyboardLayoutData.TOTAL_HEIGHT_U;
-        keyScale = Mth.clamp(Math.min(scaleByW, scaleByH), 7.0f, 24.0f);
+        int keyboardSpaceH = bodyH;
+        float widthU = currentStyle.widthU();
+        float heightU = currentStyle.heightU();
+        float gapW = (widthU - 1.0f) * KeyboardLayoutData.BASE_GAP;
+        float gapH = (heightU - 1.0f) * KeyboardLayoutData.BASE_GAP;
+        float scaleByW = (keyboardSpaceW - gapW) / widthU;
+        float scaleByH = (keyboardSpaceH - gapH) / heightU;
+        keyScale = Mth.clamp(Math.min(scaleByW, scaleByH), 6.0f, 30.0f);
 
-        int keyboardW = KeyboardLayoutData.totalWidthPx(keyScale);
-        int keyboardH = KeyboardLayoutData.totalHeightPx(keyScale);
-        keyboardX = keyboardLeft + Math.max(0, (keyboardSpaceW - keyboardW) / 2);
-        keyboardY = contentTop + Math.max(0, (keyboardSpaceH - keyboardH) / 2);
+        int kbW = KeyboardLayoutData.totalWidthPx(currentStyle, keyScale);
+        int kbH = KeyboardLayoutData.totalHeightPx(currentStyle, keyScale);
+        keyboardX = keyboardLeft + Math.max(0, (keyboardSpaceW - kbW) / 2);
+        keyboardY = contentTop + Math.max(0, (keyboardSpaceH - kbH) / 2);
     }
 
     private void refreshFilters() {
@@ -433,15 +635,48 @@ public class KeybindViewerScreen extends Screen {
         modFilteredKeys = scanner.filterByMod(selectedModId);
     }
 
-    private int keyStatusColor(KeyBindingScanner.KeyStatus status, boolean matched) {
-        var colors = UITheme.colors();
-        int base = switch (status) {
-            case FREE -> colors.widgetBg();
-            case SELF -> UITheme.lerpColor(colors.widgetBg(), colors.accent(), 0.58f);
-            case OTHER_SINGLE, BOUND -> UITheme.lerpColor(colors.widgetBg(), colors.success(), 0.52f);
-            case CONFLICT -> UITheme.lerpColor(colors.widgetBg(), colors.danger(), 0.68f);
+    static int pulseAccent(float animTick) {
+        var c = UITheme.colors();
+        float pulse = 0.5f + 0.5f * (float) Math.sin(animTick * 0.18f);
+        return UITheme.lerpColor(c.accent(), c.accentLight(), pulse);
+    }
+
+    private int statusAccentColor(KeyBindingScanner.KeyStatus status) {
+        var c = UITheme.colors();
+        return switch (status) {
+            case FREE -> c.widgetBorder();
+            case SELF -> c.accent();
+            case OTHER_SINGLE, BOUND -> c.success();
+            case CONFLICT -> c.danger();
         };
-        return matched ? base : UITheme.lerpColor(base, colors.panelBg(), 0.56f);
+    }
+
+    /** 状态对应的标签前景色：CONFLICT/SELF 用白色保证对比度，OTHER/BOUND 用主文本色，FREE 用次文本色。 */
+    static int labelColorForStatus(KeyBindingScanner.KeyStatus status) {
+        var c = UITheme.colors();
+        return switch (status) {
+            case CONFLICT -> 0xFFFFFFFF;
+            case SELF -> 0xFFFFFFFF;
+            case OTHER_SINGLE, BOUND -> c.textPrimary();
+            case FREE -> c.textSecondary();
+        };
+    }
+
+    static int keyStatusColor(KeyBindingScanner.KeyStatus status) {
+        var c = UITheme.colors();
+        return switch (status) {
+            case FREE -> c.widgetBg();
+            case SELF -> UITheme.lerpColor(c.widgetBg(), c.accent(), 0.68f);
+            case OTHER_SINGLE, BOUND -> UITheme.lerpColor(c.widgetBg(), c.success(), 0.62f);
+            case CONFLICT -> UITheme.lerpColor(c.widgetBg(), c.danger(), 0.82f);
+        };
+    }
+
+    /** 未匹配过滤器的按键画成幽灵态：把基础颜色叠上 0x55 的 alpha，让它沉到背景里。 */
+    static int keyStatusColor(KeyBindingScanner.KeyStatus status, boolean matched) {
+        int base = keyStatusColor(status);
+        if (matched) return base;
+        return UITheme.withAlpha(base, 0x55);
     }
 
     private boolean isVisibleKey(int virtualKey) {
@@ -457,87 +692,83 @@ public class KeybindViewerScreen extends Screen {
     private List<Map.Entry<String, String>> filteredModEntries() {
         List<Map.Entry<String, String>> entries = new ArrayList<>();
         for (Map.Entry<String, String> entry : scanner.getAllRegisteredMods().entrySet()) {
-            if (modSearchQuery.isBlank() || entry.getValue().toLowerCase().contains(modSearchQuery.toLowerCase()) || entry.getKey().toLowerCase().contains(modSearchQuery.toLowerCase())) {
+            if (modSearchQuery.isBlank()
+                    || entry.getValue().toLowerCase().contains(modSearchQuery.toLowerCase())
+                    || entry.getKey().toLowerCase().contains(modSearchQuery.toLowerCase())) {
                 entries.add(entry);
             }
         }
         return entries;
     }
 
-    private Component themeLabel() {
-        return Component.literal(UITheme.getMode() == UITheme.Mode.DARK ? "Dark" : "Light");
-    }
-
     private static String trim(String value, int maxLength) {
         return value.length() <= maxLength ? value : value.substring(0, maxLength - 2) + "..";
     }
 
-    private static String statusTranslation(KeyBindingScanner.KeyStatus status) {
-        return switch (status) {
-            case FREE -> "screen.newvisualkeybing.viewer.legend.free";
-            case SELF -> "screen.newvisualkeybing.viewer.legend.self";
-            case OTHER_SINGLE, BOUND -> "screen.newvisualkeybing.viewer.legend.other";
-            case CONFLICT -> "screen.newvisualkeybing.viewer.legend.conflict";
-        };
-    }
-
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (super.mouseClicked(mouseX, mouseY, button)) {
-            return true;
-        }
-        if (button != 0) {
-            return false;
-        }
+        if (super.mouseClicked(mouseX, mouseY, button)) return true;
+        if (button != 0) return false;
 
-        int panelX = PANEL_MARGIN + 16;
-        int tabY = PANEL_MARGIN + 84;
-        int currentX = panelX;
-        for (FilterTab tab : FilterTab.values()) {
-            int w = font.width(tab.getLabel()) + 16;
-            if (inside(mouseX, mouseY, currentX, tabY, w, TAB_H)) {
+        FilterTab[] tabs = FilterTab.values();
+        int x = toolbarTabsX;
+        int y = HEADER_H + 4;
+        int h = TOOLBAR_H - 8;
+        for (FilterTab tab : tabs) {
+            int w = font.width(tab.getLabel()) + 14;
+            if (inside(mouseX, mouseY, x, y, w, h)) {
                 activeFilter = tab;
                 refreshFilters();
                 return true;
             }
-            currentX += w + 6;
+            x += w + 4;
         }
 
-        if (modPanelOpen) {
-            if (handleModPanelClick(mouseX, mouseY)) {
-                return true;
-            }
+        if (modPanelOpen && width >= COMPACT_WIDTH_THRESHOLD) {
+            if (handleModPanelClick(mouseX, mouseY)) return true;
+        } else if (profilePanelOpen && width >= COMPACT_WIDTH_THRESHOLD) {
+            int px = BODY_PAD;
+            int py = contentTop;
+            int ph = contentBottom - contentTop;
+            if (profilePanel.mouseClicked(mouseX, mouseY, px, py, ph)) return true;
         }
 
-        int detailButtonW = Math.max(74, (detailPanelW - 32) / 2);
-        if (selectedVirtualKey != null && inside(mouseX, mouseY, detailModifyX, detailModifyY, detailButtonW, 18)) {
+        boolean wheelSelected = selectedVirtualKey != null && KeyboardLayoutData.isWheel(selectedVirtualKey);
+        if (selectedVirtualKey != null && !wheelSelected && detailPanel.isModifyHit(mouseX, mouseY)) {
             minecraft.setScreen(new KeybindEditScreen(this, selectedVirtualKey));
             return true;
         }
-        if (selectedVirtualKey != null && inside(mouseX, mouseY, detailUnbindX, detailUnbindY, detailButtonW, 18)) {
-            KeybindEditScreen.unbindAllForVirtualKey(selectedVirtualKey);
+        if (selectedVirtualKey != null && !wheelSelected && detailPanel.isUnbindHit(mouseX, mouseY)) {
+            int virtualKey = selectedVirtualKey;
+            int countBefore = (KeyboardLayoutData.isMouse(virtualKey)
+                    ? scanner.getMouseBindings(KeyboardLayoutData.virtualToMouseBtn(virtualKey))
+                    : scanner.getBindings(virtualKey)).size();
+            KeybindEditScreen.unbindAllForVirtualKey(virtualKey);
             scanner.scan();
             refreshFilters();
+            String label = scanner.getVirtualKeyLabel(virtualKey);
+            showNotice(Component.translatable("screen.newvisualkeybing.viewer.notice.unbind",
+                    label, countBefore).getString());
             return true;
         }
 
-        for (KeyboardLayoutData.KeyDef key : KeyboardLayoutData.KEYS) {
-            int x = key.screenX(keyboardX, keyScale);
-            int y = key.screenY(keyboardY, keyScale);
-            int w = key.screenW(keyScale);
-            int h = key.screenH(keyScale);
-            if (inside(mouseX, mouseY, x, y, w, h)) {
+        for (KeyboardLayoutData.KeyDef key : KeyboardLayoutData.getKeys(currentStyle)) {
+            int kx = key.screenX(keyboardX, keyScale);
+            int ky = key.screenY(keyboardY, keyScale);
+            int kw = key.screenW(keyScale);
+            int kh = key.screenH(keyScale);
+            if (inside(mouseX, mouseY, kx, ky, kw, kh)) {
                 selectedVirtualKey = key.glfwKey();
+                detailPanel.resetScroll();
                 return true;
             }
         }
 
-        for (int i = 0; i < KeyboardLayoutData.MOUSE_KEYS.size(); i++) {
-            Rect bounds = mouseKeyBounds(i);
-            if (bounds != null && bounds.contains(mouseX, mouseY)) {
-                selectedVirtualKey = KeyboardLayoutData.MOUSE_KEYS.get(i).glfwKey();
-                return true;
-            }
+        Integer mouseHit = mouseRenderer.hitTest(mouseX, mouseY);
+        if (mouseHit != null) {
+            selectedVirtualKey = mouseHit;
+            detailPanel.resetScroll();
+            return true;
         }
 
         selectedVirtualKey = null;
@@ -545,21 +776,28 @@ public class KeybindViewerScreen extends Screen {
     }
 
     private boolean handleModPanelClick(double mouseX, double mouseY) {
-        int x = PANEL_MARGIN + 14;
+        int x = BODY_PAD;
         int y = contentTop;
+        int w = MOD_PANEL_W;
         int h = contentBottom - contentTop;
-        int searchY = y + 30;
-        if (inside(mouseX, mouseY, x + 8, searchY, MOD_PANEL_W - 16, 18)) {
+        int contentY = y + PANEL_CONTENT_TOP;
+        int fieldX = x + PANEL_PAD;
+        int fieldW = w - PANEL_PAD * 2;
+        int searchY = contentY + 4;
+        int listY = searchY + 26;
+        int actionY = y + h - PANEL_PAD - ACTION_BTN_H;
+        int rowH = 18;
+        int visibleRows = Math.max(1, (actionY - ACTION_BTN_GAP - listY) / rowH);
+
+        if (inside(mouseX, mouseY, fieldX, searchY, fieldW, 18)) {
             modSearchQuery = "";
             return true;
         }
 
         List<Map.Entry<String, String>> mods = filteredModEntries();
-        int rowY = searchY + 28;
-        int rowH = 18;
-        int visibleRows = Math.max(1, (h - 74) / rowH);
+        int rowY = listY;
         for (int i = modScrollOffset; i < mods.size() && i < modScrollOffset + visibleRows; i++) {
-            if (inside(mouseX, mouseY, x + 8, rowY, MOD_PANEL_W - 16, rowH - 1)) {
+            if (inside(mouseX, mouseY, fieldX, rowY, fieldW, rowH - 1)) {
                 selectedModId = mods.get(i).getKey().equals(selectedModId) ? null : mods.get(i).getKey();
                 refreshFilters();
                 return true;
@@ -567,8 +805,7 @@ public class KeybindViewerScreen extends Screen {
             rowY += rowH;
         }
 
-        int clearY = y + h - 28;
-        if (inside(mouseX, mouseY, x + 8, clearY, MOD_PANEL_W - 16, 18)) {
+        if (inside(mouseX, mouseY, fieldX, actionY, fieldW, ACTION_BTN_H)) {
             selectedModId = null;
             refreshFilters();
             return true;
@@ -578,7 +815,7 @@ public class KeybindViewerScreen extends Screen {
 
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
-        if (modPanelOpen && !searchBox.isFocused() && codePoint >= 32) {
+        if (modPanelOpen && width >= COMPACT_WIDTH_THRESHOLD && !searchBox.isFocused() && codePoint >= 32) {
             modSearchQuery += codePoint;
             modScrollOffset = 0;
             return true;
@@ -588,32 +825,45 @@ public class KeybindViewerScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (modPanelOpen && !searchBox.isFocused()) {
+        if (modPanelOpen && width >= COMPACT_WIDTH_THRESHOLD && !searchBox.isFocused()) {
             if (keyCode == 259 && !modSearchQuery.isEmpty()) {
                 modSearchQuery = modSearchQuery.substring(0, modSearchQuery.length() - 1);
                 return true;
             }
-            if (keyCode == 256) {
-                modSearchQuery = "";
-            }
+            if (keyCode == 256) modSearchQuery = "";
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        if (modPanelOpen) {
-            int x = PANEL_MARGIN + 14;
+        if (selectedVirtualKey != null
+                && mouseX >= detailPanelX && mouseX <= detailPanelX + detailPanelW
+                && mouseY >= detailPanelY && mouseY <= detailPanelY + detailPanelH) {
+            detailPanel.scroll((int) Math.signum(delta));
+            return true;
+        }
+        if (mouseX >= mousePanelX && mouseX <= mousePanelX + mousePanelW
+                && mouseY >= mousePanelY && mouseY <= mousePanelY + mousePanelH) {
+            selectedVirtualKey = delta > 0 ? KeyboardLayoutData.WHEEL_UP_VIRTUAL : KeyboardLayoutData.WHEEL_DOWN_VIRTUAL;
+            return true;
+        }
+        if (modPanelOpen && width >= COMPACT_WIDTH_THRESHOLD) {
+            int x = BODY_PAD;
             if (mouseX >= x && mouseX <= x + MOD_PANEL_W) {
-                int visibleRows = Math.max(1, (contentBottom - contentTop - 74) / 18);
-                modScrollOffset = Mth.clamp(modScrollOffset - (int) Math.signum(delta), 0, Math.max(0, filteredModEntries().size() - visibleRows));
+                int actionY = contentTop + (contentBottom - contentTop) - PANEL_PAD - ACTION_BTN_H;
+                int searchY = contentTop + PANEL_CONTENT_TOP + 4;
+                int listY = searchY + 26;
+                int visibleRows = Math.max(1, (actionY - ACTION_BTN_GAP - listY) / 18);
+                modScrollOffset = Mth.clamp(modScrollOffset - (int) Math.signum(delta), 0,
+                        Math.max(0, filteredModEntries().size() - visibleRows));
                 return true;
             }
         }
         return super.mouseScrolled(mouseX, mouseY, delta);
     }
 
-    private static boolean inside(double mouseX, double mouseY, int x, int y, int w, int h) {
+    static boolean inside(double mouseX, double mouseY, int x, int y, int w, int h) {
         return mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
     }
 

@@ -12,7 +12,6 @@ public final class UITheme {
 
     private static Mode currentMode = Mode.DARK;
 
-    // ═══════════════ DARK (GitHub Dark / Vercel Dark) ═══════════════
     private static final ColorPalette DARK = new ColorPalette(
             0xF00D1117, 0xFF161B22, 0xFF21262D, 0xFF30363D, 0xFF8B949E,
             0xFF58A6FF, 0xFF79C0FF, 0xFFA5D6FF,
@@ -26,7 +25,6 @@ public final class UITheme {
             0xE0FFFFFF, 0xFF484F58
     );
 
-    // ═══════════════ LIGHT (GitHub Light / Vercel Light) ═══════════════
     private static final ColorPalette LIGHT = new ColorPalette(
             0xF0FFFFFF, 0xFFF6F8FA, 0xFFFFFFFF, 0xFFD0D7DE, 0xFF57606A,
             0xFF0969DA, 0xFF0550AE, 0xFF54AEFF,
@@ -46,9 +44,6 @@ public final class UITheme {
     public static Mode getMode() { return currentMode; }
     public static ColorPalette colors() { return currentMode == Mode.DARK ? DARK : LIGHT; }
 
-    // ═══════════════════════════════════════════════════════════
-    // 绘制工具
-    // ═══════════════════════════════════════════════════════════
 
     public static void fillRoundedRect(GuiGraphics g, int x, int y, int w, int h, int radius, int color) {
         if (radius <= 0 || w < radius * 2 || h < radius * 2) {
@@ -100,6 +95,82 @@ public final class UITheme {
             g.fill(x + w - 2, y + 1, x + w - 1, y + 2, color);
             g.fill(x + 1, y + h - 2, x + 2, y + h - 1, color);
             g.fill(x + w - 2, y + h - 2, x + w - 1, y + h - 1, color);
+        }
+    }
+
+    /** 4 角独立半径的圆角矩形填充（rTL/rTR/rBR/rBL，按 CSS border-radius 顺序）。 */
+    public static void fillRoundedRectEx(GuiGraphics g, int x, int y, int w, int h,
+                                         int rTL, int rTR, int rBR, int rBL, int color) {
+        rTL = Math.min(rTL, Math.min(w / 2, h / 2));
+        rTR = Math.min(rTR, Math.min(w / 2, h / 2));
+        rBR = Math.min(rBR, Math.min(w / 2, h / 2));
+        rBL = Math.min(rBL, Math.min(w / 2, h / 2));
+
+        int topMax = Math.max(rTL, rTR);
+        int botMax = Math.max(rBL, rBR);
+
+        // 中段（横跨整宽）
+        if (h - topMax - botMax > 0) {
+            g.fill(x, y + topMax, x + w, y + h - botMax, color);
+        }
+
+        // 顶段：留 4 个角的圆角空隙
+        g.fill(x + rTL, y, x + w - rTR, y + topMax, color);
+        if (rTL < topMax) g.fill(x, y + rTL, x + rTL, y + topMax, color);
+        if (rTR < topMax) g.fill(x + w - rTR, y + rTR, x + w, y + topMax, color);
+
+        // 底段
+        g.fill(x + rBL, y + h - botMax, x + w - rBR, y + h, color);
+        if (rBL < botMax) g.fill(x, y + h - botMax, x + rBL, y + h - rBL, color);
+        if (rBR < botMax) g.fill(x + w - rBR, y + h - botMax, x + w, y + h - rBR, color);
+
+        // 4 个圆角弧
+        if (rTL > 0) fillRoundedCorner(g, x, y, rTL, color, true, true);
+        if (rTR > 0) fillRoundedCorner(g, x + w - rTR, y, rTR, color, false, true);
+        if (rBL > 0) fillRoundedCorner(g, x, y + h - rBL, rBL, color, true, false);
+        if (rBR > 0) fillRoundedCorner(g, x + w - rBR, y + h - rBR, rBR, color, false, false);
+    }
+
+    /** 4 角独立半径的圆角矩形边框（1px 宽）。 */
+    public static void drawRoundedBorderEx(GuiGraphics g, int x, int y, int w, int h,
+                                           int rTL, int rTR, int rBR, int rBL, int color) {
+        rTL = Math.min(rTL, Math.min(w / 2, h / 2));
+        rTR = Math.min(rTR, Math.min(w / 2, h / 2));
+        rBR = Math.min(rBR, Math.min(w / 2, h / 2));
+        rBL = Math.min(rBL, Math.min(w / 2, h / 2));
+
+        // 上下水平边（避开两端圆角）
+        g.fill(x + rTL, y, x + w - rTR, y + 1, color);
+        g.fill(x + rBL, y + h - 1, x + w - rBR, y + h, color);
+        // 左右垂直边
+        int leftStart = Math.max(rTL, 0);
+        int leftEnd = h - Math.max(rBL, 0);
+        g.fill(x, y + leftStart, x + 1, y + leftEnd, color);
+        int rightStart = Math.max(rTR, 0);
+        int rightEnd = h - Math.max(rBR, 0);
+        g.fill(x + w - 1, y + rightStart, x + w, y + rightEnd, color);
+
+        // 4 角弧线（用 1px 弧近似）
+        drawCornerArc(g, x, y, rTL, color, true, true);
+        drawCornerArc(g, x + w - rTR, y, rTR, color, false, true);
+        drawCornerArc(g, x, y + h - rBL, rBL, color, true, false);
+        drawCornerArc(g, x + w - rBR, y + h - rBR, rBR, color, false, false);
+    }
+
+    /** 沿圆弧画 1px 描边（每行最外侧像素）。 */
+    private static void drawCornerArc(GuiGraphics g, int cx, int cy, int r, int color,
+                                      boolean left, boolean top) {
+        if (r <= 0) return;
+        for (int dy = 0; dy < r; dy++) {
+            float distY = top ? (r - dy - 0.5f) : (dy + 0.5f);
+            int width = (int) Math.sqrt((float) r * r - distY * distY);
+            if (left) {
+                int sx = cx + (r - width);
+                g.fill(sx, cy + dy, sx + 1, cy + dy + 1, color);
+            } else {
+                int ex = cx + width - 1;
+                g.fill(ex, cy + dy, ex + 1, cy + dy + 1, color);
+            }
         }
     }
 
@@ -236,7 +307,6 @@ public final class UITheme {
             int glassBg,
             int divider
     ) {
-        // ─── 历史命名桥接 ───
         public int success() { return successColor; }
         public int danger() { return dangerColor; }
         public int warning() { return warningColor; }

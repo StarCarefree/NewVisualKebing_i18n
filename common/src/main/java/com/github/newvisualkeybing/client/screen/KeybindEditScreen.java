@@ -1,6 +1,7 @@
 package com.github.newvisualkeybing.client.screen;
 
 import com.github.newvisualkeybing.client.keyboard.KeyBindingScanner;
+import com.github.newvisualkeybing.client.keyboard.KeybindProfileStore;
 import com.github.newvisualkeybing.client.keyboard.KeyboardLayoutData;
 import com.github.newvisualkeybing.client.ui.MCButton;
 import com.github.newvisualkeybing.client.ui.UITheme;
@@ -16,7 +17,6 @@ import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +52,9 @@ public class KeybindEditScreen extends Screen {
     private EditBox searchBox;
     private MCButton resetAllButton;
     private MCButton backButton;
+    private final KeybindProfileStore profileStore = new KeybindProfileStore();
+    private final KeybindProfilePanel profilePanel = new KeybindProfilePanel(profileStore, this::rebuildEntries, this::showNotice);
+    private final KeybindPriorityControls priorityControls = new KeybindPriorityControls(profileStore);
 
     private final List<Object> entries = new ArrayList<>();
     private int scrollOffset;
@@ -60,6 +63,8 @@ public class KeybindEditScreen extends Screen {
     private KeyMapping waitingMapping;
     private String noticeMessage;
     private long noticeUntil;
+    private int searchX;
+    private int searchW;
 
     public KeybindEditScreen(Screen parent) {
         this(parent, null);
@@ -74,17 +79,25 @@ public class KeybindEditScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        searchBox = new EditBox(font, 18, 11, 220, 16, Component.translatable("screen.newvisualkeybing.viewer.search"));
+        // 响应式头部宽度：在窄屏下让搜索框收缩
+        searchX = KeybindProfilePanel.WIDTH + 22;
+        searchW = Mth.clamp(width - searchX - 300, 150, 360);
+        searchBox = new EditBox(font, searchX, 11, searchW, 16, Component.translatable("screen.newvisualkeybing.viewer.search"));
         searchBox.setHint(Component.translatable("screen.newvisualkeybing.viewer.search"));
         searchBox.setResponder(value -> rebuildEntries());
         searchBox.setBordered(false);
         addRenderableWidget(searchBox);
 
-        backButton = MCButton.create(width - 188, 8, 60, 20,
+        int btnGap = 6;
+        int backW = 60;
+        int resetW = 110;
+        int xBack = width - 12 - resetW - btnGap - backW;
+        int xReset = width - 12 - resetW;
+        backButton = MCButton.create(xBack, 8, backW, 20,
                 Component.translatable("screen.newvisualkeybing.viewer.back"), b -> onClose());
         addRenderableWidget(backButton);
 
-        resetAllButton = MCButton.create(width - 122, 8, 110, 20,
+        resetAllButton = MCButton.create(xReset, 8, resetW, 20,
                 Component.translatable("screen.newvisualkeybing.viewer.reset_all"), b -> resetAllMappings());
         addRenderableWidget(resetAllButton);
 
@@ -93,11 +106,8 @@ public class KeybindEditScreen extends Screen {
 
     private void rebuildEntries() {
         entries.clear();
-        KeyMapping[] all = Minecraft.getInstance().options.keyMappings.clone();
-        Arrays.sort(all);
-
         Map<String, List<KeyMapping>> grouped = new LinkedHashMap<>();
-        for (KeyMapping km : all) {
+        for (KeyMapping km : profileStore.sortedMappings(Minecraft.getInstance().options.keyMappings)) {
             String cat = Component.translatable(km.getCategory()).getString();
             grouped.computeIfAbsent(cat, k -> new ArrayList<>()).add(km);
         }
@@ -138,6 +148,8 @@ public class KeybindEditScreen extends Screen {
 
     private int listTop() { return HEADER_H + 4; }
     private int listHeight() { return height - HEADER_H - FOOTER_H - 8; }
+    private int listX() { return KeybindProfilePanel.WIDTH + 14; }
+    private int listW() { return width - listX() - 8; }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
@@ -146,6 +158,7 @@ public class KeybindEditScreen extends Screen {
         graphics.fill(0, 0, width, height, UITheme.withAlpha(colors.panelBg(), 0xE4));
 
         renderHeader(graphics);
+        profilePanel.render(graphics, font, 8, listTop(), listHeight(), mouseX, mouseY);
         renderEntries(graphics, mouseX, mouseY);
         renderFooter(graphics);
         super.render(graphics, mouseX, mouseY, partialTick);
@@ -159,8 +172,8 @@ public class KeybindEditScreen extends Screen {
         UITheme.drawGlassPanel(graphics, 4, 4, width - 8, HEADER_H - 4, 8);
 
         // search box backdrop
-        UITheme.fillRoundedRect(graphics, 14, 8, 232, 22, 6, colors.inputBg());
-        UITheme.drawRoundedBorder(graphics, 14, 8, 232, 22, 6,
+        UITheme.fillRoundedRect(graphics, searchX - 4, 8, searchW + 8, 22, 6, colors.inputBg());
+        UITheme.drawRoundedBorder(graphics, searchX - 4, 8, searchW + 8, 22, 6,
                 searchBox != null && searchBox.isFocused() ? colors.accent() : colors.widgetBorder());
 
         // title
@@ -168,15 +181,15 @@ public class KeybindEditScreen extends Screen {
                 ? Component.translatable("screen.newvisualkeybing.viewer.edit_title_focused",
                     targetKeyName()).getString()
                 : Component.translatable("screen.newvisualkeybing.viewer.edit_title").getString();
-        graphics.drawString(font, title, 256, 14, colors.textPrimary(), false);
+        graphics.drawString(font, title, searchX + searchW + 14, 14, colors.textPrimary(), false);
     }
 
     private void renderEntries(GuiGraphics graphics, int mouseX, int mouseY) {
         var colors = UITheme.colors();
         int listTop = listTop();
         int listH = listHeight();
-        int x = 8;
-        int w = width - 16;
+        int x = listX();
+        int w = listW();
 
         UITheme.fillRoundedRect(graphics, x, listTop, w, listH, 8, UITheme.withAlpha(colors.headerBg(), 0xC0));
         UITheme.drawRoundedBorder(graphics, x, listTop, w, listH, 8, colors.widgetBorder());
@@ -234,11 +247,14 @@ public class KeybindEditScreen extends Screen {
         }
 
         String name = Component.translatable(ke.mapping.getName()).getString();
-        int nameMaxW = w - CHANGE_BTN_W - RESET_BTN_W - COL_GAP * 4 - 12;
+        int nameMaxW = w - CHANGE_BTN_W - RESET_BTN_W - KeybindPriorityControls.WIDTH - COL_GAP * 5 - 12;
         if (font.width(name) > nameMaxW) name = font.plainSubstrByWidth(name, nameMaxW - 6) + "..";
         graphics.drawString(font, name, x + 8, y + (ENTRY_H - font.lineHeight) / 2, colors.textPrimary(), false);
 
-        int changeX = x + w - CHANGE_BTN_W - RESET_BTN_W - COL_GAP * 2;
+        int priorityX = x + w - KeybindPriorityControls.WIDTH - CHANGE_BTN_W - RESET_BTN_W - COL_GAP * 3;
+        priorityControls.render(graphics, font, ke.mapping, priorityX, y, ENTRY_H, mouseX, mouseY, hovered);
+
+        int changeX = priorityX + KeybindPriorityControls.WIDTH + COL_GAP;
         String changeLabel = isWaiting
                 ? "> ... <"
                 : focusVirtualKey != null ? Component.translatable(
@@ -338,8 +354,9 @@ public class KeybindEditScreen extends Screen {
             return true;
         }
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
+        if (profilePanel.mouseClicked(mouseX, mouseY, 8, listTop(), listHeight())) return true;
 
-        int x = 8, w = width - 16;
+        int x = listX(), w = listW();
         int listTop = listTop();
         int listH = listHeight();
         if (mouseX >= x && mouseX < x + w && mouseY >= listTop && mouseY < listTop + listH) {
@@ -348,7 +365,19 @@ public class KeybindEditScreen extends Screen {
             for (Object entry : entries) {
                 int eh = entryHeight(entry);
                 if (entry instanceof KeyEntry ke && relY >= drawY && relY < drawY + ENTRY_H) {
-                    int changeX = x + 8 + (w - 16) - CHANGE_BTN_W - RESET_BTN_W - COL_GAP * 2;
+                    int rowX = x + 8;
+                    int rowW = w - 16;
+                    int priorityX = rowX + rowW - KeybindPriorityControls.WIDTH - CHANGE_BTN_W - RESET_BTN_W - COL_GAP * 3;
+                    int priorityDelta = priorityControls.hitDelta(mouseX, priorityX);
+                    if (priorityDelta != 0) {
+                        profileStore.changePriority(ke.mapping, priorityDelta);
+                        rebuildEntries();
+                        showNotice(Component.translatable("screen.newvisualkeybing.viewer.priority.changed",
+                                Component.translatable(ke.mapping.getName()).getString(),
+                                profileStore.priorityOf(ke.mapping)).getString());
+                        return true;
+                    }
+                    int changeX = priorityX + KeybindPriorityControls.WIDTH + COL_GAP;
                     int resetX = changeX + CHANGE_BTN_W + COL_GAP;
                     if (mouseX >= changeX && mouseX < changeX + CHANGE_BTN_W) {
                         if (focusVirtualKey != null) {
@@ -391,6 +420,11 @@ public class KeybindEditScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (waitingMapping != null) {
+            // 滚轮无法被 GLFW 作为可绑定的 mouseButton；提示用户。
+            showNotice(Component.translatable("screen.newvisualkeybing.viewer.wheel_unsupported").getString());
+            return true;
+        }
         scrollOffset = Mth.clamp(scrollOffset - (int) (delta * ENTRY_H * 2), 0, Math.max(0, totalListH - listHeight()));
         return true;
     }
@@ -408,6 +442,10 @@ public class KeybindEditScreen extends Screen {
 
     private void applyFocusedTarget(KeyMapping km) {
         if (focusVirtualKey == null) {
+            return;
+        }
+        if (KeyboardLayoutData.isWheel(focusVirtualKey)) {
+            showNotice(Component.translatable("screen.newvisualkeybing.viewer.wheel_unsupported").getString());
             return;
         }
         Minecraft.getInstance().options.setKey(km, targetInputKey());
