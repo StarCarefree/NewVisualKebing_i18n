@@ -12,10 +12,10 @@ import net.minecraft.util.Mth;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * 详情面板：标题 / 状态徽章 / 绑定列表 / 修改/解绑按钮。
- * 负责自身的滚动状态与按钮命中区域，对外只暴露 render + scroll + 命中测试。
- */
+
+
+
+
 final class KeybindDetailPanel {
 
     private static final int PANEL_PAD = 10;
@@ -185,7 +185,7 @@ final class KeybindDetailPanel {
         return chipW;
     }
 
-    /** 渲染绑定列表，必要时支持滚动；末尾若被截断显示"+N"。 */
+    
     private void renderBindingList(GuiGraphics g, Font font, int x, int y, int w, int h,
                                    List<KeyBindingScanner.KeyBindingInfo> bindings) {
         var c = UITheme.colors();
@@ -245,7 +245,7 @@ final class KeybindDetailPanel {
         }
     }
 
-    /** 单/双行绑定行：左侧是 action 名，右侧是 mod 名 / 上下文 tag。 */
+    
     private static void renderBindingRow(GuiGraphics g, Font font, int x, int y, int w, int rowH,
                                          KeyBindingScanner.KeyBindingInfo info, boolean twoLines) {
         var c = UITheme.colors();

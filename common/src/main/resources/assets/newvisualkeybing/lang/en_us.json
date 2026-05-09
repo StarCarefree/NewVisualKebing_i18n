@@ -35,6 +35,7 @@
   "screen.newvisualkeybing.viewer.waiting": "Press a new key, mouse button, or ESC to clear",
   "screen.newvisualkeybing.viewer.waiting_hint": "ESC = unbind  |  Mouse buttons 1-8 are supported",
   "screen.newvisualkeybing.viewer.back": "< Back",
+  "screen.newvisualkeybing.viewer.open_visual": "Visualize",
   "screen.newvisualkeybing.viewer.reset_all": "Reset All",
   "screen.newvisualkeybing.viewer.reset_all_done": "All key bindings reset to default",
   "screen.newvisualkeybing.viewer.reset_one": "Reset: %s",

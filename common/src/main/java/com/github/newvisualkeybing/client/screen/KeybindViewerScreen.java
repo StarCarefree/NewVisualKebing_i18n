@@ -45,7 +45,7 @@ public class KeybindViewerScreen extends Screen {
     private final Screen parent;
     private final KeyBindingScanner scanner = new KeyBindingScanner();
     private final KeybindTooltipRenderer tooltipRenderer = new KeybindTooltipRenderer(scanner);
-    private final KeybindProfileStore profileStore = new KeybindProfileStore();
+    private final KeybindProfileStore profileStore = KeybindProfileStore.global();
     private final KeybindProfilePanel profilePanel = new KeybindProfilePanel(
             profileStore, this::onProfileMutation, this::showNotice);
     private final KeybindKeyboardRenderer keyboardRenderer = new KeybindKeyboardRenderer(scanner);
@@ -185,7 +185,7 @@ public class KeybindViewerScreen extends Screen {
         tabsW += (tabs.length - 1) * 4;
 
         int legendW = compact
-                ? 4 * 14 + 3 * 4               // 4 娑擃亜娓鹃悙?+ 3 娑擃亪妫跨捄?
+                ? 4 * 14 + 3 * 4               
                 : measureLegendWidth();
         int searchW = SEARCH_W_DEFAULT;
         int outerPad = 12;
@@ -379,7 +379,7 @@ public class KeybindViewerScreen extends Screen {
         int textY = y + (STATUS_H - font.lineHeight) / 2;
         String scale = Component.translatable("screen.newvisualkeybing.viewer.scale", Math.round(keyScale)).getString();
         String layoutName = layoutLabel(currentStyle).getString();
-        String middle = layoutName + "  璺? " + scale;
+        String middle = layoutName + "  |  " + scale;
         g.drawString(font, middle, (width - font.width(middle)) / 2, textY, c.textMuted(), false);
 
         String hint = Component.translatable("screen.newvisualkeybing.viewer.hint").getString();
@@ -651,7 +651,7 @@ public class KeybindViewerScreen extends Screen {
         };
     }
 
-    /** 状态对应的标签前景色：CONFLICT/SELF 用白色保证对比度，OTHER/BOUND 用主文本色，FREE 用次文本色。 */
+    
     static int labelColorForStatus(KeyBindingScanner.KeyStatus status) {
         var c = UITheme.colors();
         return switch (status) {
@@ -672,7 +672,7 @@ public class KeybindViewerScreen extends Screen {
         };
     }
 
-    /** 未匹配过滤器的按键画成幽灵态：把基础颜色叠上 0x55 的 alpha，让它沉到背景里。 */
+    
     static int keyStatusColor(KeyBindingScanner.KeyStatus status, boolean matched) {
         int base = keyStatusColor(status);
         if (matched) return base;

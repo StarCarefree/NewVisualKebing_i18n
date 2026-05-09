@@ -13,11 +13,11 @@ public final class KeyboardLayoutData {
     public static final int BASE_UNIT = 24;
     public static final int BASE_GAP = 2;
     public static final int MOUSE_BTN_BASE = -100;
-    /** 滚轮上 / 下 — 视图层伪键，不是真正可绑定的鼠标按钮（GLFW 不支持）。 */
+    
     public static final int WHEEL_UP_VIRTUAL = MOUSE_BTN_BASE - 8;
     public static final int WHEEL_DOWN_VIRTUAL = MOUSE_BTN_BASE - 9;
 
-    /** 视图样式：影响渲染的键集与总尺寸，但不影响键码扫描的全集。 */
+    
     public enum Style {
         ANSI_104("ANSI 104", 22.50f, 6.10f),
         KEYS_98("98 Keys",   21.50f, 6.10f),
@@ -85,7 +85,7 @@ public final class KeyboardLayoutData {
         return isMouse(virtualKey) && !isWheel(virtualKey);
     }
 
-    /** 兼容旧调用：默认按 ANSI_104 计算。 */
+    
     public static int totalWidthPx(float scale) {
         return totalWidthPx(Style.ANSI_104, scale);
     }
@@ -103,14 +103,14 @@ public final class KeyboardLayoutData {
     }
 
 
-    /** 按键所属物理分区，用于在 FREE 态做底色微调，模仿真实键盘的视觉分组。 */
+    
     public enum KeyZone {
-        ALPHA,      // 字母 / 数字 / 标点
-        MODIFIER,   // Shift / Ctrl / Alt / Win / Tab / Caps / Enter / Bksp / Space / Menu
-        FUNCTION,   // Esc / F1-F12 / PrtSc / ScrLk / Pause
-        EDIT,       // Insert / Home / PgUp / Delete / End / PgDn
-        ARROW,      // ↑ ↓ ← →
-        NUMPAD      // KP_* / NumLock
+        ALPHA,      
+        MODIFIER,   
+        FUNCTION,   
+        EDIT,       
+        ARROW,      
+        NUMPAD      
     }
 
     public static KeyZone zoneOf(int glfwKey) {
@@ -136,12 +136,12 @@ public final class KeyboardLayoutData {
         return KeyZone.ALPHA;
     }
 
-    /** 兼容旧调用 (TOTAL_WIDTH_U / TOTAL_HEIGHT_U) 的常量。 */
+    
     public static final float TOTAL_WIDTH_U = Style.ANSI_104.widthU();
     public static final float TOTAL_HEIGHT_U = Style.ANSI_104.heightU();
 
     public static final List<KeyDef> MOUSE_KEYS;
-    /** 默认全键集（ANSI_104），保留以便扫描器、过滤器使用最大键码集合。 */
+    
     public static final List<KeyDef> KEYS;
 
     private static final Map<Style, List<KeyDef>> LAYOUTS = new EnumMap<>(Style.class);
@@ -160,8 +160,8 @@ public final class KeyboardLayoutData {
         mouse.add(new KeyDef(MOUSE_BTN_BASE - 5, "M6", null, 0, 0, 1, 1));
         mouse.add(new KeyDef(MOUSE_BTN_BASE - 6, "M7", null, 0, 0, 1, 1));
         mouse.add(new KeyDef(MOUSE_BTN_BASE - 7, "M8", null, 0, 0, 1, 1));
-        mouse.add(new KeyDef(WHEEL_UP_VIRTUAL, "▲", null, 0, 0, 1, 1));
-        mouse.add(new KeyDef(WHEEL_DOWN_VIRTUAL, "▼", null, 0, 0, 1, 1));
+        mouse.add(new KeyDef(WHEEL_UP_VIRTUAL, "\u25B2", null, 0, 0, 1, 1));
+        mouse.add(new KeyDef(WHEEL_DOWN_VIRTUAL, "\u25BC", null, 0, 0, 1, 1));
         MOUSE_KEYS = Collections.unmodifiableList(mouse);
 
         LAYOUTS.put(Style.ANSI_104,   Collections.unmodifiableList(buildAnsi104()));
@@ -269,7 +269,7 @@ public final class KeyboardLayoutData {
         keys.add(kd(GLFW.GLFW_KEY_PERIOD, ".", ">", 10.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_SLASH, "/", "?", 11.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_RIGHT_SHIFT, "Shift", null, 12.25f, 4.10f, 2.75f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_UP, "↑", null, 16.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_UP, "\u2191", null, 16.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_1, "1", null, 18.50f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_2, "2", null, 19.50f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_3, "3", null, 20.50f, 4.10f, 1.00f, 1.0f));
@@ -283,9 +283,9 @@ public final class KeyboardLayoutData {
         keys.add(kd(GLFW.GLFW_KEY_RIGHT_SUPER, "Win", null, 11.25f, 5.10f, 1.25f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_MENU, "Menu", null, 12.50f, 5.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_RIGHT_CONTROL, "Ctrl", null, 13.50f, 5.10f, 1.50f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_LEFT, "←", null, 15.25f, 5.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_DOWN, "↓", null, 16.25f, 5.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT, "→", null, 17.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT, "\u2190", null, 15.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_DOWN, "\u2193", null, 16.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT, "\u2192", null, 17.25f, 5.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_0, "0", null, 18.50f, 5.10f, 2.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_DECIMAL, ".", null, 20.50f, 5.10f, 1.00f, 1.0f));
         return keys;
@@ -306,13 +306,12 @@ public final class KeyboardLayoutData {
         return g >= GLFW.GLFW_KEY_KP_0 && g <= GLFW.GLFW_KEY_KP_EQUAL;
     }
 
-    /** 仅主键盘（行 1..5），无 F 键、无编辑键、无方向键、无小键盘。 */
     private static List<KeyDef> buildCompact60() {
         List<KeyDef> keys = new ArrayList<>();
         for (KeyDef k : buildAnsi104()) {
             int g = k.glfwKey();
-            if (k.gridY() < 0.5f) continue;                       // F 行
-            if (isKeypadKey(g)) continue;                          // 小键盘
+            if (k.gridY() < 0.5f) continue;
+            if (isKeypadKey(g)) continue;
             if (g == GLFW.GLFW_KEY_INSERT || g == GLFW.GLFW_KEY_HOME
                     || g == GLFW.GLFW_KEY_PAGE_UP
                     || g == GLFW.GLFW_KEY_DELETE || g == GLFW.GLFW_KEY_END
@@ -327,16 +326,6 @@ public final class KeyboardLayoutData {
         return keys;
     }
 
-    /**
-     * 真实的 98 键键盘布局（1800 / 96-key 紧凑设计）。
-     * 基于 ANSI 104 移除以下 6 个键，得到 98 个：
-     *   ScrollLock, Pause, Insert, End, Right Super (Win), Menu
-     * 同时按真实 98 键键盘的物理排布紧凑化：
-     *   - 编辑键群（仅剩 Home/PgUp/Del/PgDn）紧贴主键盘
-     *   - 数字小键盘紧贴编辑键群
-     *   - RAlt + RCtrl 填补移除 RSuper/Menu 后的空缺
-     *   - 方向键 ↑ 移到压缩位置，左/下/右 紧贴 RCtrl
-     */
     private static List<KeyDef> build98() {
         List<KeyDef> keys = new ArrayList<>();
 
@@ -426,7 +415,7 @@ public final class KeyboardLayoutData {
         keys.add(kd(GLFW.GLFW_KEY_PERIOD,        ".",    ">",  10.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_SLASH,         "/",    "?",  11.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_RIGHT_SHIFT,   "Shift",null, 12.25f, 4.10f, 1.75f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_UP,            "↑",    null, 14.00f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_UP,            "\u2191",    null, 14.00f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_1,          "1",    null, 17.50f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_2,          "2",    null, 18.50f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_3,          "3",    null, 19.50f, 4.10f, 1.00f, 1.0f));
@@ -438,9 +427,9 @@ public final class KeyboardLayoutData {
         keys.add(kd(GLFW.GLFW_KEY_SPACE,         "Space",null,  3.75f, 5.10f, 6.25f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_RIGHT_ALT,     "Alt",  null, 10.00f, 5.10f, 1.25f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_RIGHT_CONTROL, "Ctrl", null, 11.25f, 5.10f, 1.75f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_LEFT,          "←",    null, 13.00f, 5.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_DOWN,          "↓",    null, 14.00f, 5.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT,         "→",    null, 15.00f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT,          "\u2190",    null, 13.00f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_DOWN,          "\u2193",    null, 14.00f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT,         "\u2192",    null, 15.00f, 5.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_0,          "0",    null, 17.50f, 5.10f, 2.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_DECIMAL,    ".",    null, 19.50f, 5.10f, 1.00f, 1.0f));
 

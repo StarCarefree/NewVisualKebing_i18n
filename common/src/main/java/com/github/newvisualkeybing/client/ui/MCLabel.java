@@ -7,7 +7,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 多行文本标签（移植自 MemoryCatcher）。 */
 public class MCLabel {
 
     private int x, y, maxWidth;

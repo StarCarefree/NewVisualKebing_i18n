@@ -1,6 +1,6 @@
 package com.github.newvisualkeybing.mixin;
 
-import com.github.newvisualkeybing.client.screen.KeybindEditScreen;
+import com.github.newvisualkeybing.client.screen.KeybindViewerScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.gui.components.Button;
@@ -40,7 +40,7 @@ public abstract class MixinControlsScreen extends OptionsSubScreen {
         }
 
         addRenderableWidget(Button.builder(Component.translatable("controls.keybinds"), button ->
-                Minecraft.getInstance().setScreen(new KeybindEditScreen((Screen) (Object) this)))
+                Minecraft.getInstance().setScreen(new KeybindViewerScreen((Screen) (Object) this)))
                 .bounds(x, y, 150, 20)
                 .build());
     }

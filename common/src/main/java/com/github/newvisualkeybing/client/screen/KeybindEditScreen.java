@@ -1,6 +1,7 @@
 package com.github.newvisualkeybing.client.screen;
 
 import com.github.newvisualkeybing.client.keyboard.KeyBindingScanner;
+import com.github.newvisualkeybing.client.keyboard.KeybindPriorityEnforcer;
 import com.github.newvisualkeybing.client.keyboard.KeybindProfileStore;
 import com.github.newvisualkeybing.client.keyboard.KeyboardLayoutData;
 import com.github.newvisualkeybing.client.ui.MCButton;
@@ -21,21 +22,21 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 现代化按键编辑/管理界面。
- * 移植自 Holographic Keybinds {@code KeyRebindEditScreen}，剥离 HolographicUIlib / Forge 依赖，
- * 改用 MemoryCatcher 风格的 {@link UITheme} 玻璃面板与渐变按钮。
- *
- * <p>支持：
- * <ul>
- *   <li>分类分组的 KeyMapping 列表，可滚动</li>
- *   <li>搜索框过滤功能 / 分类</li>
- *   <li>等待绑定状态，按下任意键 / 鼠标即可应用，ESC 取消</li>
- *   <li>每行 “修改 / 默认” 按钮</li>
- *   <li>顶部 “重置全部” 按钮</li>
- *   <li>冲突高亮、未绑定灰显</li>
- * </ul>
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 public class KeybindEditScreen extends Screen {
 
     private static final int HEADER_H = 36;
@@ -47,12 +48,13 @@ public class KeybindEditScreen extends Screen {
     private static final int COL_GAP = 4;
 
     private final Screen parent;
-    private final Integer focusVirtualKey; // 可选：聚焦到某个虚拟键位绑定（仅显示该键的绑定）
+    private final Integer focusVirtualKey; 
 
     private EditBox searchBox;
     private MCButton resetAllButton;
+    private MCButton viewerButton;
     private MCButton backButton;
-    private final KeybindProfileStore profileStore = new KeybindProfileStore();
+    private final KeybindProfileStore profileStore = KeybindProfileStore.global();
     private final KeybindProfilePanel profilePanel = new KeybindProfilePanel(profileStore, this::rebuildEntries, this::showNotice);
     private final KeybindPriorityControls priorityControls = new KeybindPriorityControls(profileStore);
 
@@ -79,7 +81,7 @@ public class KeybindEditScreen extends Screen {
     @Override
     protected void init() {
         super.init();
-        // 响应式头部宽度：在窄屏下让搜索框收缩
+        
         searchX = KeybindProfilePanel.WIDTH + 22;
         searchW = Mth.clamp(width - searchX - 300, 150, 360);
         searchBox = new EditBox(font, searchX, 11, searchW, 16, Component.translatable("screen.newvisualkeybing.viewer.search"));
@@ -90,12 +92,19 @@ public class KeybindEditScreen extends Screen {
 
         int btnGap = 6;
         int backW = 60;
+        int viewerW = 96;
         int resetW = 110;
-        int xBack = width - 12 - resetW - btnGap - backW;
         int xReset = width - 12 - resetW;
+        int xViewer = xReset - btnGap - viewerW;
+        int xBack = xViewer - btnGap - backW;
         backButton = MCButton.create(xBack, 8, backW, 20,
                 Component.translatable("screen.newvisualkeybing.viewer.back"), b -> onClose());
         addRenderableWidget(backButton);
+
+        viewerButton = MCButton.create(xViewer, 8, viewerW, 20,
+                Component.translatable("screen.newvisualkeybing.viewer.open_visual"),
+                b -> minecraft.setScreen(new KeybindViewerScreen(parent)));
+        addRenderableWidget(viewerButton);
 
         resetAllButton = MCButton.create(xReset, 8, resetW, 20,
                 Component.translatable("screen.newvisualkeybing.viewer.reset_all"), b -> resetAllMappings());
@@ -171,12 +180,12 @@ public class KeybindEditScreen extends Screen {
         var colors = UITheme.colors();
         UITheme.drawGlassPanel(graphics, 4, 4, width - 8, HEADER_H - 4, 8);
 
-        // search box backdrop
+        
         UITheme.fillRoundedRect(graphics, searchX - 4, 8, searchW + 8, 22, 6, colors.inputBg());
         UITheme.drawRoundedBorder(graphics, searchX - 4, 8, searchW + 8, 22, 6,
                 searchBox != null && searchBox.isFocused() ? colors.accent() : colors.widgetBorder());
 
-        // title
+        
         String title = focusVirtualKey != null
                 ? Component.translatable("screen.newvisualkeybing.viewer.edit_title_focused",
                     targetKeyName()).getString()
@@ -212,7 +221,7 @@ public class KeybindEditScreen extends Screen {
         }
         graphics.disableScissor();
 
-        // scrollbar
+        
         if (totalListH > listH) {
             float ratio = (float) listH / totalListH;
             int sbH = Math.max(20, (int) (listH * ratio));
@@ -255,13 +264,12 @@ public class KeybindEditScreen extends Screen {
         priorityControls.render(graphics, font, ke.mapping, priorityX, y, ENTRY_H, mouseX, mouseY, hovered);
 
         int changeX = priorityX + KeybindPriorityControls.WIDTH + COL_GAP;
+        // Always show the mapping's actual current binding. Focused-mode is communicated via the
+        // screen title ("Assign X to an action") + the focusedTarget side-bar highlight + button color.
         String changeLabel = isWaiting
                 ? "> ... <"
-                : focusVirtualKey != null ? Component.translatable(
-                        focusedTarget ? "screen.newvisualkeybing.viewer.bound_to_target" : "screen.newvisualkeybing.viewer.bind_to_target",
-                        targetKeyName()).getString()
                 : (isUnbound ? Component.translatable("screen.newvisualkeybing.viewer.unbound").getString()
-                : ke.mapping.getTranslatedKeyMessage().getString());
+                             : ke.mapping.getTranslatedKeyMessage().getString());
         if (font.width(changeLabel) > CHANGE_BTN_W - 8) {
             changeLabel = font.plainSubstrByWidth(changeLabel, CHANGE_BTN_W - 14) + "..";
         }
@@ -270,10 +278,12 @@ public class KeybindEditScreen extends Screen {
         int chBg = isWaiting ? UITheme.withAlpha(colors.accent(), 0xC0)
                 : chHover ? UITheme.lerpColor(colors.widgetBg(), colors.accent(), 0.45f)
                 : colors.widgetBg();
+        // Focused-mode invitation: unbound rows get accent so user sees "click → bind X here"
         int statusColor = focusedTarget ? colors.accent()
                 : conflict ? colors.dangerColor()
+                : focusVirtualKey != null && isUnbound ? colors.accentLight()
                 : isUnbound ? colors.textMuted()
-                : isWaiting ? colors.accentLight() : colors.accentLight();
+                : colors.accentLight();
         UITheme.fillRoundedRect(graphics, changeX, y + 1, CHANGE_BTN_W, ENTRY_H - 4, 4, chBg);
         UITheme.drawRoundedBorder(graphics, changeX, y + 1, CHANGE_BTN_W, ENTRY_H - 4, 4, UITheme.withAlpha(statusColor, 0x88));
         graphics.fill(changeX + 3, y + 1, changeX + CHANGE_BTN_W - 3, y + 2, statusColor);
@@ -389,7 +399,7 @@ public class KeybindEditScreen extends Screen {
                     }
                     if (mouseX >= resetX && mouseX < resetX + RESET_BTN_W) {
                         Minecraft.getInstance().options.setKey(ke.mapping, ke.mapping.getDefaultKey());
-                        KeyMapping.resetMapping();
+                        KeybindPriorityEnforcer.resetAndEnforce();
                         Minecraft.getInstance().options.save();
                         rebuildEntries();
                         showNotice(Component.translatable("screen.newvisualkeybing.viewer.reset_one",
@@ -421,7 +431,7 @@ public class KeybindEditScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         if (waitingMapping != null) {
-            // 滚轮无法被 GLFW 作为可绑定的 mouseButton；提示用户。
+            
             showNotice(Component.translatable("screen.newvisualkeybing.viewer.wheel_unsupported").getString());
             return true;
         }
@@ -431,7 +441,7 @@ public class KeybindEditScreen extends Screen {
 
     private void applyKey(KeyMapping km, InputConstants.Key key) {
         Minecraft.getInstance().options.setKey(km, key);
-        KeyMapping.resetMapping();
+        KeybindPriorityEnforcer.resetAndEnforce();
         Minecraft.getInstance().options.save();
         waitingMapping = null;
         rebuildEntries();
@@ -449,7 +459,7 @@ public class KeybindEditScreen extends Screen {
             return;
         }
         Minecraft.getInstance().options.setKey(km, targetInputKey());
-        KeyMapping.resetMapping();
+        KeybindPriorityEnforcer.resetAndEnforce();
         Minecraft.getInstance().options.save();
         rebuildEntries();
         showNotice(Component.translatable("screen.newvisualkeybing.viewer.rebound",
@@ -481,7 +491,7 @@ public class KeybindEditScreen extends Screen {
         for (KeyMapping km : Minecraft.getInstance().options.keyMappings) {
             Minecraft.getInstance().options.setKey(km, km.getDefaultKey());
         }
-        KeyMapping.resetMapping();
+        KeybindPriorityEnforcer.resetAndEnforce();
         Minecraft.getInstance().options.save();
         rebuildEntries();
         showNotice(Component.translatable("screen.newvisualkeybing.viewer.reset_all_done").getString());
@@ -497,7 +507,7 @@ public class KeybindEditScreen extends Screen {
         return false;
     }
 
-    /** 历史 API：解绑所有指向某虚拟键的 KeyMapping。供 KeybindViewerScreen 复用。 */
+    
     public static void unbindAllForVirtualKey(int virtualKey) {
         Minecraft minecraft = Minecraft.getInstance();
         for (KeyMapping mapping : minecraft.options.keyMappings) {
@@ -511,7 +521,7 @@ public class KeybindEditScreen extends Screen {
                 minecraft.options.setKey(mapping, InputConstants.UNKNOWN);
             }
         }
-        KeyMapping.resetMapping();
+        KeybindPriorityEnforcer.resetAndEnforce();
         minecraft.options.save();
     }
 

@@ -35,6 +35,7 @@
   "screen.newvisualkeybing.viewer.waiting": "按下新按键、鼠标键，或按 ESC 清除",
   "screen.newvisualkeybing.viewer.waiting_hint": "ESC = 解绑  |  支持鼠标 1-8 键",
   "screen.newvisualkeybing.viewer.back": "< 返回",
+  "screen.newvisualkeybing.viewer.open_visual": "可视化",
   "screen.newvisualkeybing.viewer.reset_all": "重置全部",
   "screen.newvisualkeybing.viewer.reset_all_done": "已将所有按键绑定恢复为默认",
   "screen.newvisualkeybing.viewer.reset_one": "已重置: %s",

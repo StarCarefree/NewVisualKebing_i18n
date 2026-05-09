@@ -33,6 +33,32 @@ public final class KeybindProfileStore {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final DateTimeFormatter EXPORT_TIME = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
 
+    private static volatile KeybindProfileStore INSTANCE;
+
+    public static KeybindProfileStore global() {
+        KeybindProfileStore local = INSTANCE;
+        if (local == null) {
+            synchronized (KeybindProfileStore.class) {
+                local = INSTANCE;
+                if (local == null) {
+                    local = new KeybindProfileStore();
+                    INSTANCE = local;
+
+                    KeybindPriorityEnforcer.applyPriority();
+                }
+            }
+        }
+        return local;
+    }
+
+    public static int globalPriorityOf(String mappingName) {
+        try {
+            return global().priorityOf(mappingName);
+        } catch (Throwable ignored) {
+            return 0;
+        }
+    }
+
     private final Path storeFile;
     private final Path exportDir;
     private StoreData data = new StoreData();
@@ -138,7 +164,7 @@ public final class KeybindProfileStore {
             mapping.setKey(key);
             data.priorities.put(mapping.getName(), binding.priority);
         }
-        KeyMapping.resetMapping();
+        KeybindPriorityEnforcer.resetAndEnforce();
         Minecraft.getInstance().options.save();
         save();
         return true;
@@ -197,7 +223,11 @@ public final class KeybindProfileStore {
     }
 
     public int priorityOf(KeyMapping mapping) {
-        return data.priorities.getOrDefault(mapping.getName(), 0);
+        return priorityOf(mapping.getName());
+    }
+
+    public int priorityOf(String mappingName) {
+        return data.priorities.getOrDefault(mappingName, 0);
     }
 
     public void changePriority(KeyMapping mapping, int delta) {
@@ -213,6 +243,7 @@ public final class KeybindProfileStore {
             }
         }
         save();
+        KeybindPriorityEnforcer.resetAndEnforce();
     }
 
     public List<KeyMapping> sortedMappings(KeyMapping[] mappings) {

@@ -9,10 +9,10 @@ import net.minecraft.client.gui.GuiGraphics;
 import java.util.List;
 import java.util.function.IntPredicate;
 
-/**
- * 渲染整块键盘（机箱 + 每个按键 + 标签 + 绑定计数 badge）。
- * 从 KeybindViewerScreen 拆出，保留同样的视觉规则与 zone 染色逻辑。
- */
+
+
+
+
 final class KeybindKeyboardRenderer {
 
     private final KeyBindingScanner scanner;
@@ -21,9 +21,9 @@ final class KeybindKeyboardRenderer {
         this.scanner = scanner;
     }
 
-    /**
-     * @return 当前帧鼠标悬停的虚拟键，若无则返回 {@code null}。
-     */
+    
+
+
     Integer render(GuiGraphics g, Font font, KeyboardLayoutData.Style style,
                    int keyboardX, int keyboardY, float keyScale,
                    Integer selectedVirtualKey, IntPredicate isVisibleKey,
@@ -89,7 +89,7 @@ final class KeybindKeyboardRenderer {
         return hovered;
     }
 
-    /** FREE 状态下按 zone 给微弱差异色，让分区视觉更分明。 */
+    
     private static int applyZoneTint(int base, int glfwKey, KeyBindingScanner.KeyStatus status) {
         if (status != KeyBindingScanner.KeyStatus.FREE) return base;
         var c = UITheme.colors();
@@ -104,7 +104,7 @@ final class KeybindKeyboardRenderer {
         };
     }
 
-    /** 键盘机箱：投影 + 外壳 + 内托盘 + 顶部高光。 */
+    
     private static void renderChassis(GuiGraphics g, KeyboardLayoutData.Style style, int keyboardX, int keyboardY, float keyScale) {
         var c = UITheme.colors();
         int kbW = KeyboardLayoutData.totalWidthPx(style, keyScale);
@@ -134,7 +134,7 @@ final class KeybindKeyboardRenderer {
                 UITheme.withAlpha(c.widgetBorder(), 0xC0));
     }
 
-    /** 主标签居中；副标签（Shift 字符）显示在键的上沿。 */
+    
     private static void renderKeyLabels(GuiGraphics g, Font font, KeyboardLayoutData.KeyDef key,
                                         int x, int y, int w, int h, int labelColor, boolean showSub) {
         var c = UITheme.colors();
@@ -153,7 +153,7 @@ final class KeybindKeyboardRenderer {
         }
     }
 
-    /** 绑定数量 badge：≥2 用 pill 高亮，=1 在右上角画一个小圆点。 */
+    
     private static void renderBindingBadge(GuiGraphics g, Font font, int x, int y, int w, int h,
                                            int count, KeyBindingScanner.KeyStatus status) {
         if (count <= 0 || h < 14) return;

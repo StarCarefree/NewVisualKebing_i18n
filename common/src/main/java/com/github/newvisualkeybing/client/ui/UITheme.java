@@ -2,10 +2,10 @@ package com.github.newvisualkeybing.client.ui;
 
 import net.minecraft.client.gui.GuiGraphics;
 
-/**
- * 现代Web风格主题系统 — 移植自 MemoryCatcher，并保留 KeybindViewerScreen 历史命名。
- * 设计语言：柔和圆角、微妙阴影层级、玻璃态、高对比但不刺眼的配色。
- */
+
+
+
+
 public final class UITheme {
 
     public enum Mode { DARK, LIGHT }
@@ -98,7 +98,7 @@ public final class UITheme {
         }
     }
 
-    /** 4 角独立半径的圆角矩形填充（rTL/rTR/rBR/rBL，按 CSS border-radius 顺序）。 */
+    
     public static void fillRoundedRectEx(GuiGraphics g, int x, int y, int w, int h,
                                          int rTL, int rTR, int rBR, int rBL, int color) {
         rTL = Math.min(rTL, Math.min(w / 2, h / 2));
@@ -109,29 +109,29 @@ public final class UITheme {
         int topMax = Math.max(rTL, rTR);
         int botMax = Math.max(rBL, rBR);
 
-        // 中段（横跨整宽）
+        
         if (h - topMax - botMax > 0) {
             g.fill(x, y + topMax, x + w, y + h - botMax, color);
         }
 
-        // 顶段：留 4 个角的圆角空隙
+        
         g.fill(x + rTL, y, x + w - rTR, y + topMax, color);
         if (rTL < topMax) g.fill(x, y + rTL, x + rTL, y + topMax, color);
         if (rTR < topMax) g.fill(x + w - rTR, y + rTR, x + w, y + topMax, color);
 
-        // 底段
+        
         g.fill(x + rBL, y + h - botMax, x + w - rBR, y + h, color);
         if (rBL < botMax) g.fill(x, y + h - botMax, x + rBL, y + h - rBL, color);
         if (rBR < botMax) g.fill(x + w - rBR, y + h - botMax, x + w, y + h - rBR, color);
 
-        // 4 个圆角弧
+        
         if (rTL > 0) fillRoundedCorner(g, x, y, rTL, color, true, true);
         if (rTR > 0) fillRoundedCorner(g, x + w - rTR, y, rTR, color, false, true);
         if (rBL > 0) fillRoundedCorner(g, x, y + h - rBL, rBL, color, true, false);
         if (rBR > 0) fillRoundedCorner(g, x + w - rBR, y + h - rBR, rBR, color, false, false);
     }
 
-    /** 4 角独立半径的圆角矩形边框（1px 宽）。 */
+    
     public static void drawRoundedBorderEx(GuiGraphics g, int x, int y, int w, int h,
                                            int rTL, int rTR, int rBR, int rBL, int color) {
         rTL = Math.min(rTL, Math.min(w / 2, h / 2));
@@ -139,10 +139,10 @@ public final class UITheme {
         rBR = Math.min(rBR, Math.min(w / 2, h / 2));
         rBL = Math.min(rBL, Math.min(w / 2, h / 2));
 
-        // 上下水平边（避开两端圆角）
+        
         g.fill(x + rTL, y, x + w - rTR, y + 1, color);
         g.fill(x + rBL, y + h - 1, x + w - rBR, y + h, color);
-        // 左右垂直边
+        
         int leftStart = Math.max(rTL, 0);
         int leftEnd = h - Math.max(rBL, 0);
         g.fill(x, y + leftStart, x + 1, y + leftEnd, color);
@@ -150,14 +150,14 @@ public final class UITheme {
         int rightEnd = h - Math.max(rBR, 0);
         g.fill(x + w - 1, y + rightStart, x + w, y + rightEnd, color);
 
-        // 4 角弧线（用 1px 弧近似）
+        
         drawCornerArc(g, x, y, rTL, color, true, true);
         drawCornerArc(g, x + w - rTR, y, rTR, color, false, true);
         drawCornerArc(g, x, y + h - rBL, rBL, color, true, false);
         drawCornerArc(g, x + w - rBR, y + h - rBR, rBR, color, false, false);
     }
 
-    /** 沿圆弧画 1px 描边（每行最外侧像素）。 */
+    
     private static void drawCornerArc(GuiGraphics g, int cx, int cy, int r, int color,
                                       boolean left, boolean top) {
         if (r <= 0) return;
@@ -203,7 +203,7 @@ public final class UITheme {
         drawRoundedBorder(g, x, y, w, h, radius, withAlpha(c.widgetBorder(), 0x60));
     }
 
-    /** 现代玻璃面板：阴影 + 圆角背景 + 顶部高光 + 边框。保留旧名以兼容历史调用点。 */
+    
     public static void drawGlassPanel(GuiGraphics g, int x, int y, int w, int h, int radius) {
         var c = colors();
         drawCardShadow(g, x - 2, y - 2, w + 4, h + 4, radius + 2);
@@ -234,9 +234,9 @@ public final class UITheme {
         g.fill(x, y, x + width, y + 1, color);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // 缓动 & 颜色工具
-    // ═══════════════════════════════════════════════════════════
+    
+    
+    
 
     public static float easeOutCubic(float t) {
         t = Math.max(0, Math.min(1, t));
@@ -274,10 +274,10 @@ public final class UITheme {
         return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
-    /**
-     * 统一调色板 — 同时兼容 MemoryCatcher 命名（successColor/dangerColor/glassBg ...）
-     * 与本项目历史命名（success/danger/accentAlt/inputBg/divider/dimOverlay）。
-     */
+    
+
+
+
     public record ColorPalette(
             int panelBg,
             int headerBg,

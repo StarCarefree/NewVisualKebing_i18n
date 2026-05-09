@@ -21,19 +21,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * 跨平台按键绑定扫描器。
- * 移植自 Holographic Keybinds {@code KeyBindingScanner}，将 Forge 专属 API
- * （{@code IKeyConflictContext}, {@code ModList}）抽离至 {@link Services#PLATFORM}，
- * 兼具：
- * <ul>
- *   <li>冲突上下文感知（同上下文内才视为真冲突）</li>
- *   <li>多模式 modId 解析（key.&lt;modId&gt;.* / key.categories.&lt;modId&gt; / 显示名匹配）</li>
- *   <li>GLFW 键名缓存</li>
- *   <li>统计信息缓存</li>
- *   <li>键盘 + 鼠标双轨扫描</li>
- * </ul>
- */
+
 public class KeyBindingScanner {
 
     public enum KeyStatus {
@@ -293,10 +281,10 @@ public class KeyBindingScanner {
         };
     }
 
-    /** 统一获取虚拟键标签：处理普通按键 / 鼠标按钮 / 滚轮。 */
+
     public String getVirtualKeyLabel(int virtualKey) {
-        if (virtualKey == KeyboardLayoutData.WHEEL_UP_VIRTUAL) return "Wheel ▲";
-        if (virtualKey == KeyboardLayoutData.WHEEL_DOWN_VIRTUAL) return "Wheel ▼";
+        if (virtualKey == KeyboardLayoutData.WHEEL_UP_VIRTUAL) return "Wheel \u25B2";
+        if (virtualKey == KeyboardLayoutData.WHEEL_DOWN_VIRTUAL) return "Wheel \u25BC";
         if (KeyboardLayoutData.isMouse(virtualKey)) {
             return getMouseButtonLabel(KeyboardLayoutData.virtualToMouseBtn(virtualKey));
         }
@@ -312,10 +300,7 @@ public class KeyBindingScanner {
                 || info.modName().toLowerCase(Locale.ROOT).contains(query);
     }
 
-    /**
-     * 计算冲突状态（移植自 Holographic Keybinds）。
-     * 仅当两个绑定的冲突上下文互相 conflicts(...) 时才认为是真实冲突。
-     */
+
     private static KeyStatus computeStatus(List<KeyBindingInfo> infos) {
         if (infos.isEmpty()) return KeyStatus.FREE;
         if (infos.size() == 1) return infos.get(0).self() ? KeyStatus.SELF : KeyStatus.OTHER_SINGLE;
@@ -343,9 +328,9 @@ public class KeyBindingScanner {
         };
     }
 
-    /** 多模式 modId 解析（移植自 Holographic Keybinds，调用 Services.PLATFORM.isModLoaded 替代 ModList）。 */
+
     private static String resolveModId(String name, String category) {
-        // Pattern 1: key.<modId>.<action>
+        
         if (name != null && name.startsWith("key.")) {
             String[] parts = name.split("\\.", 3);
             if (parts.length >= 2) {
@@ -353,7 +338,7 @@ public class KeyBindingScanner {
                 if (!"minecraft".equals(candidate) && Services.PLATFORM.isModLoaded(candidate)) return candidate;
             }
         }
-        // Pattern 2: key.categories.<modId>
+        
         if (category != null && category.startsWith("key.categories.")) {
             String suffix = category.substring("key.categories.".length());
             String suffixLower = suffix.toLowerCase(Locale.ROOT);
@@ -362,7 +347,7 @@ public class KeyBindingScanner {
                 if (Services.PLATFORM.isModLoaded(suffixLower)) return suffixLower;
             }
         }
-        // Pattern 3: scan all dot-segments of name
+        
         if (name != null) {
             for (String part : name.split("\\.")) {
                 if (part.isEmpty()) continue;
@@ -371,7 +356,7 @@ public class KeyBindingScanner {
                 if (Services.PLATFORM.isModLoaded(lower)) return lower;
             }
         }
-        // Pattern 4: scan all dot-segments of category
+        
         if (category != null) {
             for (String part : category.split("\\.")) {
                 if (part.isEmpty()) continue;

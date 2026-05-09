@@ -6,10 +6,6 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 
-/**
- * 现代Web风格按钮组件（移植自 MemoryCatcher）。
- * 6px 圆角，悬停渐变 + 多层阴影 + 按压回弹。
- */
 public class MCButton extends AbstractWidget {
 
     private static final int CORNER_RADIUS = 6;

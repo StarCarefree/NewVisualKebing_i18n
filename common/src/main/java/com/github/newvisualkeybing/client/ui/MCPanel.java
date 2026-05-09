@@ -6,10 +6,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 现代Web风格卡片容器（移植自 MemoryCatcher）。
- * 8px 圆角 / 多层阴影 / 渐变标题栏 / 平滑折叠动画。
- */
 public class MCPanel {
 
     private static final int CORNER_RADIUS = 8;

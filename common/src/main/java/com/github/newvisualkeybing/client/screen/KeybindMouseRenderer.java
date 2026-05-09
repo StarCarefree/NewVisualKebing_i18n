@@ -10,9 +10,9 @@ import net.minecraft.util.Mth;
 
 import java.util.function.IntPredicate;
 
-/**
- * 鼠标面板：渲染机身 / 滚轮槽 / 主侧键，并提供基于上一次 render 几何的命中测试。
- */
+
+
+
 final class KeybindMouseRenderer {
 
     static final int MOUSE_BODY_W = 80;
@@ -41,9 +41,9 @@ final class KeybindMouseRenderer {
         this.scanner = scanner;
     }
 
-    /**
-     * @return 当前帧鼠标悬停的虚拟键，若未命中返回 {@code null}。
-     */
+    
+
+
     Integer render(GuiGraphics g, Font font, int x, int y, int w, int h,
                    Integer selectedVirtualKey, IntPredicate isVisibleKey,
                    int mouseX, int mouseY, float animTick) {
@@ -142,9 +142,9 @@ final class KeybindMouseRenderer {
         return hovered;
     }
 
-    /**
-     * 命中测试：用上一次 render 时缓存的几何，把 (mx,my) 映射到具体的鼠标虚拟键，未命中返回 {@code null}。
-     */
+    
+
+
     Integer hitTest(double mx, double my) {
         for (int i = 0; i < KeyboardLayoutData.MOUSE_KEYS.size(); i++) {
             Rect b = boundsAt(i);
