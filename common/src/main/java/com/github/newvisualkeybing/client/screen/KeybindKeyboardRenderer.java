@@ -34,15 +34,14 @@ final class KeybindKeyboardRenderer {
                    int keyboardX, int keyboardY, float keyScale,
                    Integer selectedVirtualKey, IntPredicate isVisibleKey,
                    IntPredicate isHiddenKey, IntPredicate isSearchMatch,
-                   int mouseX, int mouseY, float animTick) {
+                   int mouseX, int mouseY, float animTick, long nowMs) {
         var c = UITheme.colors();
         renderChassis(g, style, keyboardX, keyboardY, keyScale);
         refreshDrawStates(font, style, keyboardX, keyboardY, keyScale);
 
         long scannerVersion = scanner.version();
-        long now = System.currentTimeMillis();
-        float dt = lastFrameMs > 0 ? Math.min((now - lastFrameMs) / 1000f, 0.05f) : 0.016f;
-        lastFrameMs = now;
+        float dt = lastFrameMs > 0 ? Math.min((nowMs - lastFrameMs) / 1000f, 0.05f) : 0.016f;
+        lastFrameMs = nowMs;
         Integer hovered = null;
         for (KeyDrawState state : drawStates) {
             state.matched = isVisibleKey.test(state.glfwKey);

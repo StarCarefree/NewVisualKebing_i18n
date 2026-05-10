@@ -271,12 +271,7 @@ final class KeybindTooltipRenderer {
     }
 
     private static String fitToWidth(Font font, String text, int maxW) {
-        if (maxW <= 0) return "";
-        if (font.width(text) <= maxW) return text;
-        String ellipsis = "..";
-        int eW = font.width(ellipsis);
-        if (maxW <= eW) return ellipsis;
-        return font.plainSubstrByWidth(text, maxW - eW) + ellipsis;
+        return TextFitCache.fitPlain(font, text, maxW);
     }
 
     private static int clamp(int value, int min, int max) {

@@ -185,10 +185,25 @@ public final class UITheme {
     }
 
     private static void drawCornerSpans(GuiGraphics g, int cx, int cy, int[] spans, int color) {
-        for (int i = 0; i < spans.length; i += 4) {
+        int i = 0;
+        while (i < spans.length) {
+            int y = spans[i];
+            int x1 = spans[i + 1];
+            int x2 = spans[i + 2];
             int hits = spans[i + 3];
+            int next = i + 4;
+            int endY = y + 1;
+            while (next < spans.length
+                    && spans[next] == endY
+                    && spans[next + 1] == x1
+                    && spans[next + 2] == x2
+                    && spans[next + 3] == hits) {
+                endY++;
+                next += 4;
+            }
             int finalColor = hits == 16 ? color : scaleAlpha(color, hits / 16f);
-            g.fill(cx + spans[i + 1], cy + spans[i], cx + spans[i + 2], cy + spans[i] + 1, finalColor);
+            g.fill(cx + x1, cy + y, cx + x2, cy + endY, finalColor);
+            i = next;
         }
     }
 

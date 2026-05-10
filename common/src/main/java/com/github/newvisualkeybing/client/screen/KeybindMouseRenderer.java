@@ -62,7 +62,7 @@ final class KeybindMouseRenderer {
     Integer render(GuiGraphics g, Font font, int x, int y, int w, int h,
                    Integer selectedVirtualKey, IntPredicate isVisibleKey,
                    IntPredicate isHiddenKey, IntPredicate isSearchMatch,
-                   int mouseX, int mouseY, float animTick) {
+                   int mouseX, int mouseY, float animTick, long nowMs) {
         var c = UITheme.colors();
         this.panelX = x;
         this.panelY = y;
@@ -117,9 +117,8 @@ final class KeybindMouseRenderer {
                 rTop, rTop, rBot, rBot,
                 UITheme.withAlpha(c.widgetBorder(), 0xD0));
 
-        long now = System.currentTimeMillis();
-        float dt = lastFrameMs > 0 ? Math.min((now - lastFrameMs) / 1000f, 0.05f) : 0.016f;
-        lastFrameMs = now;
+        float dt = lastFrameMs > 0 ? Math.min((nowMs - lastFrameMs) / 1000f, 0.05f) : 0.016f;
+        lastFrameMs = nowMs;
         Integer hovered = null;
         for (int i = 0; i < KeyboardLayoutData.MOUSE_KEYS.size(); i++) {
             Rect b = boundsAt(i);

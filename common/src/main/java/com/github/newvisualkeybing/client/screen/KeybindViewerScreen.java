@@ -250,6 +250,7 @@ public class KeybindViewerScreen extends Screen {
     }
 
     private void refreshTextCache() {
+        TextFitCache.clear();
         FilterTab[] tabs = FilterTab.values();
         for (int i = 0; i < tabs.length; i++) {
             tabLabels[i] = tabs[i].getLabel();
@@ -272,12 +273,16 @@ public class KeybindViewerScreen extends Screen {
     public void tick() {
         super.tick();
         searchBox.tick();
-        if (scanner.refreshIfNeeded()) markFiltersDirty();
+        if (scanner.refreshIfNeeded()) {
+            TextFitCache.clear();
+            markFiltersDirty();
+        }
         if (filtersDirty) refreshFilters();
     }
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        long nowMs = System.currentTimeMillis();
         if (filtersDirty) refreshFilters();
         animTick += partialTick;
         renderBackground(g);
@@ -299,9 +304,9 @@ public class KeybindViewerScreen extends Screen {
             profilePanel.render(g, font, x, y, h, mouseX, mouseY);
         }
 
-        renderKeyboard(g, mouseX, mouseY);
+        renderKeyboard(g, mouseX, mouseY, nowMs);
         renderKeyboardInfoBands(g, mouseX, mouseY);
-        renderMousePanel(g, mouseX, mouseY);
+        renderMousePanel(g, mouseX, mouseY, nowMs);
         renderDetailPanel(g, selectedVirtualKey != null ? selectedVirtualKey : hoveredVirtualKey, mouseX, mouseY);
         renderStatusBar(g);
 
@@ -309,7 +314,6 @@ public class KeybindViewerScreen extends Screen {
 
         if (hoveredVirtualKey != null
                 && (selectedVirtualKey == null || hoveredVirtualKey.intValue() != selectedVirtualKey.intValue())) {
-            long nowMs = System.currentTimeMillis();
             if (tooltipHoverKey == null || hoveredVirtualKey.intValue() != tooltipHoverKey.intValue()) {
                 tooltipHoverKey = hoveredVirtualKey;
                 tooltipHoverStartMs = nowMs;
@@ -328,7 +332,7 @@ public class KeybindViewerScreen extends Screen {
             tooltipHoverKey = null;
         }
 
-        renderNotice(g);
+        renderNotice(g, nowMs);
 
         quickEdit.render(g, font, width, height, mouseX, mouseY);
     }
@@ -541,12 +545,12 @@ public class KeybindViewerScreen extends Screen {
                 selectedModId == null ? c.widgetBorder() : c.danger(), clearHover);
     }
 
-    private void renderKeyboard(GuiGraphics g, int mouseX, int mouseY) {
+    private void renderKeyboard(GuiGraphics g, int mouseX, int mouseY, long nowMs) {
         Integer hover = keyboardRenderer.render(g, font, currentStyle,
                 keyboardX, keyboardY, keyScale,
                 selectedVirtualKey, this::isVisibleKey, this::isHiddenBySelectedMod,
                 this::isSearchMatch,
-                mouseX, mouseY, animTick);
+                mouseX, mouseY, animTick, nowMs);
         if (hover != null) hoveredVirtualKey = hover;
     }
 
@@ -634,11 +638,11 @@ public class KeybindViewerScreen extends Screen {
         };
     }
 
-    private void renderMousePanel(GuiGraphics g, int mouseX, int mouseY) {
+    private void renderMousePanel(GuiGraphics g, int mouseX, int mouseY, long nowMs) {
         Integer hover = mouseRenderer.render(g, font, mousePanelX, mousePanelY, mousePanelW, mousePanelH,
                 selectedVirtualKey, this::isVisibleKey, this::isHiddenBySelectedMod,
                 this::isSearchMatch,
-                mouseX, mouseY, animTick);
+                mouseX, mouseY, animTick, nowMs);
         if (hover != null) hoveredVirtualKey = hover;
     }
 
@@ -649,20 +653,7 @@ public class KeybindViewerScreen extends Screen {
     }
 
     static String fitToWidth(net.minecraft.client.gui.Font font, String text, int maxW) {
-        if (maxW <= 0) return "";
-        if (font.width(text) <= maxW) return text;
-        String ellipsis = "..";
-        int eW = font.width(ellipsis);
-        if (maxW <= eW) return ellipsis;
-        StringBuilder sb = new StringBuilder();
-        int w = 0;
-        for (int i = 0; i < text.length(); i++) {
-            int cw = font.width(String.valueOf(text.charAt(i)));
-            if (w + cw + eW > maxW) break;
-            sb.append(text.charAt(i));
-            w += cw;
-        }
-        return sb.append(ellipsis).toString();
+        return TextFitCache.fitByChars(font, text, maxW);
     }
 
     static void renderActionButton(GuiGraphics g, net.minecraft.client.gui.Font font,
@@ -684,9 +675,9 @@ public class KeybindViewerScreen extends Screen {
     }
 
 
-    private void renderNotice(GuiGraphics g) {
+    private void renderNotice(GuiGraphics g, long nowMs) {
         if (noticeMsg == null) return;
-        long elapsed = System.currentTimeMillis() - noticeTime;
+        long elapsed = nowMs - noticeTime;
         if (elapsed > 2500) { noticeMsg = null; return; }
         float alpha = elapsed < 300 ? elapsed / 300f
                 : elapsed > 2000 ? (2500f - elapsed) / 500f
@@ -838,6 +829,7 @@ public class KeybindViewerScreen extends Screen {
     }
 
     private void refreshFilters() {
+        TextFitCache.clear();
         textFilteredKeys = scanner.filterKeys(searchBox != null ? searchBox.getValue() : "");
         tabFilteredKeys = scanner.filterByStatus(activeFilter);
         modFilteredKeys = scanner.filterByMod(selectedModId);
