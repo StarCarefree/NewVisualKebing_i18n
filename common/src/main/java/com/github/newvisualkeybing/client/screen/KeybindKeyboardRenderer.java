@@ -21,6 +21,7 @@ final class KeybindKeyboardRenderer {
     private int cachedKeyboardY = Integer.MIN_VALUE;
     private float cachedKeyScale = Float.NaN;
     private KeyDrawState[] drawStates = new KeyDrawState[0];
+    private long lastFrameMs;
 
     KeybindKeyboardRenderer(KeyBindingScanner scanner) {
         this.scanner = scanner;
@@ -32,17 +33,21 @@ final class KeybindKeyboardRenderer {
     Integer render(GuiGraphics g, Font font, KeyboardLayoutData.Style style,
                    int keyboardX, int keyboardY, float keyScale,
                    Integer selectedVirtualKey, IntPredicate isVisibleKey,
-                   IntPredicate isHiddenKey,
+                   IntPredicate isHiddenKey, IntPredicate isSearchMatch,
                    int mouseX, int mouseY, float animTick) {
         var c = UITheme.colors();
         renderChassis(g, style, keyboardX, keyboardY, keyScale);
         refreshDrawStates(font, style, keyboardX, keyboardY, keyScale);
 
         long scannerVersion = scanner.version();
+        long now = System.currentTimeMillis();
+        float dt = lastFrameMs > 0 ? Math.min((now - lastFrameMs) / 1000f, 0.05f) : 0.016f;
+        lastFrameMs = now;
         Integer hovered = null;
         for (KeyDrawState state : drawStates) {
             state.matched = isVisibleKey.test(state.glfwKey);
             state.hidden = isHiddenKey.test(state.glfwKey);
+            state.searchMatch = isSearchMatch.test(state.glfwKey);
             state.hover = !state.hidden && KeybindViewerScreen.inside(mouseX, mouseY, state.x, state.y, state.w, state.h);
             state.selected = selectedVirtualKey != null && selectedVirtualKey == state.glfwKey;
             if (state.cachedDataVersion != scannerVersion) {
@@ -52,6 +57,10 @@ final class KeybindKeyboardRenderer {
                 state.cachedBindings = scanner.getBindings(state.glfwKey);
                 state.cachedInlineMaxW = Integer.MIN_VALUE;
             }
+            state.hoverProgress = advanceProgress(state.hoverProgress,
+                    state.hover && state.matched ? 1f : 0f, dt, 16f);
+            state.selectProgress = advanceProgress(state.selectProgress,
+                    state.selected ? 1f : 0f, dt, 18f);
             if (state.hover) hovered = state.glfwKey;
             renderKeyShape(g, state, c, animTick);
         }
@@ -103,6 +112,12 @@ final class KeybindKeyboardRenderer {
         }
     }
 
+    private static float advanceProgress(float current, float target, float dt, float speed) {
+        float updated = current + (target - current) * Math.min(1f, dt * speed);
+        if (Math.abs(updated - target) < 0.003f) return target;
+        return updated;
+    }
+
     private static void renderKeyShape(GuiGraphics g, KeyDrawState state,
                                        UITheme.ColorPalette c, float animTick) {
         int x = state.x;
@@ -111,10 +126,37 @@ final class KeybindKeyboardRenderer {
         int h = state.h;
         int radius = state.radius;
         if (state.matched && !state.hidden) {
-            int haloColor = state.selected ? UITheme.withAlpha(KeybindViewerScreen.pulseAccent(animTick), 0x70)
-                    : state.hover ? UITheme.withAlpha(c.accentAlt(), 0x55) : 0;
-            if (haloColor != 0) {
-                UITheme.fillRoundedRect(g, x - 1, y - 1, w + 2, h + 1, radius + 1, haloColor);
+            float selectEase = UITheme.easeOutCubic(state.selectProgress);
+            float hoverEase = UITheme.easeOutCubic(state.hoverProgress);
+            if (state.searchMatch && state.selectProgress < 0.6f && state.hoverProgress < 0.6f) {
+                int basePulse = KeybindViewerScreen.searchPulseAlpha(animTick);
+                int searchInner = Math.round(basePulse * (1f - Math.max(selectEase, hoverEase)));
+                if (searchInner > 0) {
+                    int outerAlpha = Math.max(0x14, searchInner / 3);
+                    UITheme.fillRoundedRect(g, x - 2, y - 2, w + 4, h + 3, radius + 2,
+                            UITheme.withAlpha(KeybindViewerScreen.searchPulseColor(animTick), outerAlpha));
+                    UITheme.fillRoundedRect(g, x - 1, y - 1, w + 2, h + 1, radius + 1,
+                            UITheme.withAlpha(KeybindViewerScreen.searchPulseColor(animTick), searchInner));
+                }
+            }
+            if (state.hoverProgress > 0.005f && state.selectProgress < 0.99f) {
+                int alpha = Math.round(0x60 * hoverEase * (1f - selectEase));
+                if (alpha > 0) {
+                    UITheme.fillRoundedRect(g, x - 1, y - 1, w + 2, h + 1, radius + 1,
+                            UITheme.withAlpha(c.accentAlt(), alpha));
+                }
+            }
+            if (state.selectProgress > 0.005f) {
+                int pulseColor = KeybindViewerScreen.pulseAccent(animTick);
+                int innerAlpha = Math.round(0x90 * selectEase);
+                int outerAlpha = Math.round(0x40 * selectEase);
+                int growW = Math.round(2f * selectEase);
+                int growH = Math.round(2f * selectEase);
+                UITheme.fillRoundedRect(g, x - growW - 1, y - growH - 1,
+                        w + growW * 2 + 2, h + growH * 2 + 1, radius + 2,
+                        UITheme.withAlpha(pulseColor, outerAlpha));
+                UITheme.fillRoundedRect(g, x - 1, y - 1, w + 2, h + 1, radius + 1,
+                        UITheme.withAlpha(pulseColor, innerAlpha));
             }
 
             int topFill = applyZoneTint(KeybindViewerScreen.keyStatusColor(state.status), state.zone, state.status);
@@ -297,6 +339,9 @@ final class KeybindKeyboardRenderer {
         boolean hidden;
         boolean hover;
         boolean selected;
+        boolean searchMatch;
+        float hoverProgress;
+        float selectProgress;
         long cachedDataVersion = Long.MIN_VALUE;
         List<KeyBindingScanner.KeyBindingInfo> cachedBindings;
         String cachedInlineText;

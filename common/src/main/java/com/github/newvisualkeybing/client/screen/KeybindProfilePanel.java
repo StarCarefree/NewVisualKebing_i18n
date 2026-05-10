@@ -21,14 +21,21 @@ final class KeybindProfilePanel {
     private final KeybindProfileStore profileStore;
     private final Runnable rebuildEntries;
     private final NoticeSink noticeSink;
+    private final Runnable releaseExternalFocus;
     private EditBox nameBox;
     private int lastNameSelection = Integer.MIN_VALUE;
     private boolean renaming;
 
     KeybindProfilePanel(KeybindProfileStore profileStore, Runnable rebuildEntries, NoticeSink noticeSink) {
+        this(profileStore, rebuildEntries, noticeSink, () -> {});
+    }
+
+    KeybindProfilePanel(KeybindProfileStore profileStore, Runnable rebuildEntries, NoticeSink noticeSink,
+                        Runnable releaseExternalFocus) {
         this.profileStore = profileStore;
         this.rebuildEntries = rebuildEntries;
         this.noticeSink = noticeSink;
+        this.releaseExternalFocus = releaseExternalFocus == null ? () -> {} : releaseExternalFocus;
     }
 
     void render(GuiGraphics graphics, Font font, int x, int y, int h, int mouseX, int mouseY) {
@@ -102,9 +109,12 @@ final class KeybindProfilePanel {
     boolean mouseClicked(double mouseX, double mouseY, int x, int y, int h) {
         if (!inside(mouseX, mouseY, x, y, WIDTH, h)) return false;
 
+        releaseExternalFocus.run();
+
         int nameX = x + 10;
         int nameY = y + 32;
         if (nameBox != null && nameBox.mouseClicked(mouseX, mouseY, 0)) {
+            nameBox.setFocused(true);
             if (profileStore.selectedProfile() != null) renaming = true;
             return true;
         }
@@ -233,6 +243,7 @@ final class KeybindProfilePanel {
         if (nameBox == null) return;
         KeybindProfileStore.Profile profile = profileStore.selectedProfile();
         if (profile == null) return;
+        releaseExternalFocus.run();
         renaming = true;
         nameBox.setValue(profile.name);
         nameBox.setFocused(true);

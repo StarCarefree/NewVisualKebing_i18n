@@ -44,6 +44,9 @@ final class KeybindMouseRenderer {
     private float cachedMouseScale = Float.NaN;
     private final int[] labelWidths = new int[KeyboardLayoutData.MOUSE_KEYS.size()];
     private Font cachedLabelFont;
+    private final float[] hoverProgress = new float[KeyboardLayoutData.MOUSE_KEYS.size()];
+    private final float[] selectProgress = new float[KeyboardLayoutData.MOUSE_KEYS.size()];
+    private long lastFrameMs;
 
     KeybindMouseRenderer(KeyBindingScanner scanner) {
         this.scanner = scanner;
@@ -54,7 +57,7 @@ final class KeybindMouseRenderer {
 
     Integer render(GuiGraphics g, Font font, int x, int y, int w, int h,
                    Integer selectedVirtualKey, IntPredicate isVisibleKey,
-                   IntPredicate isHiddenKey,
+                   IntPredicate isHiddenKey, IntPredicate isSearchMatch,
                    int mouseX, int mouseY, float animTick) {
         var c = UITheme.colors();
         this.panelX = x;
@@ -109,6 +112,9 @@ final class KeybindMouseRenderer {
                 rTop, rTop, rBot, rBot,
                 UITheme.withAlpha(c.widgetBorder(), 0xD0));
 
+        long now = System.currentTimeMillis();
+        float dt = lastFrameMs > 0 ? Math.min((now - lastFrameMs) / 1000f, 0.05f) : 0.016f;
+        lastFrameMs = now;
         Integer hovered = null;
         for (int i = 0; i < KeyboardLayoutData.MOUSE_KEYS.size(); i++) {
             Rect b = boundsAt(i);
@@ -123,27 +129,61 @@ final class KeybindMouseRenderer {
             if (hidden) hover = false;
             if (hover) hovered = key.glfwKey();
 
+            hoverProgress[i] = advanceProgress(hoverProgress[i],
+                    hover && matched ? 1f : 0f, dt, 16f);
+            selectProgress[i] = advanceProgress(selectProgress[i],
+                    selected ? 1f : 0f, dt, 18f);
+            float hoverEase = UITheme.easeOutCubic(hoverProgress[i]);
+            float selectEase = UITheme.easeOutCubic(selectProgress[i]);
+
             KeyBindingScanner.KeyStatus status = wheel
                     ? KeyBindingScanner.KeyStatus.FREE
                     : scanner.getMouseStatus(mouseButton);
             int bindingCount = wheel ? 0 : scanner.getMouseBindingCount(mouseButton);
             int radius = Math.max(3, Math.min(6, Math.min(b.w, b.h) / 4));
 
-            if (matched && !hidden && (hover || selected)) {
-                int halo = UITheme.withAlpha(selected ? KeybindViewerScreen.pulseAccent(animTick) : c.accentAlt(),
-                        selected ? 0x70 : 0x50);
-                UITheme.fillRoundedRect(g, b.x - 1, b.y - 1, b.w + 2, b.h + 2, radius + 1, halo);
+            boolean searchMatch = matched && !hidden && isSearchMatch.test(key.glfwKey());
+            if (searchMatch && hoverEase < 0.99f && selectEase < 0.99f) {
+                int basePulse = KeybindViewerScreen.searchPulseAlpha(animTick);
+                int searchInner = Math.round(basePulse * (1f - Math.max(hoverEase, selectEase)));
+                if (searchInner > 0) {
+                    int searchColor = KeybindViewerScreen.searchPulseColor(animTick);
+                    UITheme.fillRoundedRect(g, b.x - 2, b.y - 2, b.w + 4, b.h + 4, radius + 2,
+                            UITheme.withAlpha(searchColor, Math.max(0x14, searchInner / 3)));
+                    UITheme.fillRoundedRect(g, b.x - 1, b.y - 1, b.w + 2, b.h + 2, radius + 1,
+                            UITheme.withAlpha(searchColor, searchInner));
+                }
+            }
+            if (matched && !hidden && hoverProgress[i] > 0.005f && selectProgress[i] < 0.99f) {
+                int alpha = Math.round(0x55 * hoverEase * (1f - selectEase));
+                if (alpha > 0) {
+                    UITheme.fillRoundedRect(g, b.x - 1, b.y - 1, b.w + 2, b.h + 2, radius + 1,
+                            UITheme.withAlpha(c.accentAlt(), alpha));
+                }
+            }
+            if (selectProgress[i] > 0.005f) {
+                int pulseColor = KeybindViewerScreen.pulseAccent(animTick);
+                int innerAlpha = Math.round(0x80 * selectEase);
+                int outerAlpha = Math.round(0x38 * selectEase);
+                int growW = Math.round(2f * selectEase);
+                int growH = Math.round(2f * selectEase);
+                UITheme.fillRoundedRect(g, b.x - growW - 1, b.y - growH - 1,
+                        b.w + growW * 2 + 2, b.h + growH * 2 + 2, radius + 2,
+                        UITheme.withAlpha(pulseColor, outerAlpha));
+                UITheme.fillRoundedRect(g, b.x - 1, b.y - 1, b.w + 2, b.h + 2, radius + 1,
+                        UITheme.withAlpha(pulseColor, innerAlpha));
             }
 
             int fill = KeybindViewerScreen.keyStatusColor(status, matched);
             if (hidden) fill = UITheme.withAlpha(c.widgetBg(), 0x24);
             UITheme.fillRoundedRect(g, b.x, b.y, b.w, b.h, radius, fill);
             renderMouseButtonSurface(g, b, radius, status, hover || selected, wheel, hidden);
-            UITheme.drawRoundedBorder(g, b.x, b.y, b.w, b.h, radius,
-                    selected ? KeybindViewerScreen.pulseAccent(animTick)
-                            : hover ? c.accentAlt()
-                            : matched && !hidden ? c.widgetBorder()
-                            : UITheme.withAlpha(c.widgetBorder(), hidden ? 0x28 : 0x60));
+            int baseBorder = matched && !hidden ? c.widgetBorder()
+                    : UITheme.withAlpha(c.widgetBorder(), hidden ? 0x28 : 0x60);
+            int targetBorder = selectProgress[i] > hoverProgress[i]
+                    ? UITheme.lerpColor(baseBorder, KeybindViewerScreen.pulseAccent(animTick), selectEase)
+                    : UITheme.lerpColor(baseBorder, c.accentAlt(), hoverEase);
+            UITheme.drawRoundedBorder(g, b.x, b.y, b.w, b.h, radius, targetBorder);
 
             if (!hidden && b.w >= 14 && b.h >= 10) {
                 int textColor = matched ? KeybindViewerScreen.labelColorForStatus(status)
@@ -274,6 +314,12 @@ final class KeybindMouseRenderer {
         bounds[7] = new Rect(rightSideX, rightSideY + (SIDE_H + SIDE_GAP) * 2, SIDE_W, SIDE_H);
         bounds[8] = new Rect(wheelX + 1, wheelY + 1, WHEEL_COL_W - 2, wheelTickH - 2);
         bounds[9] = new Rect(wheelX + 1, wheelY + wheelTickH + mmbH + 1, WHEEL_COL_W - 2, wheelTickH - 2);
+    }
+
+    private static float advanceProgress(float current, float target, float dt, float speed) {
+        float updated = current + (target - current) * Math.min(1f, dt * speed);
+        if (Math.abs(updated - target) < 0.003f) return target;
+        return updated;
     }
 
     private void ensureLabelWidths(Font font) {

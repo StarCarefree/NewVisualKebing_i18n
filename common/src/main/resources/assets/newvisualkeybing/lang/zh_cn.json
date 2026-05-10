@@ -91,6 +91,7 @@
   "screen.newvisualkeybing.viewer.layout.compact_60": "60",
   "screen.newvisualkeybing.viewer.layout.mac_full": "Mac 完整",
   "screen.newvisualkeybing.viewer.layout.mac_compact": "Mac 紧凑",
+  "screen.newvisualkeybing.viewer.layout.default_set": "已将 %s 设为默认布局（Shift+点击切换）",
   "screen.newvisualkeybing.viewer.profile.title": "按键方案",
   "screen.newvisualkeybing.viewer.profile.empty": "暂无已保存方案",
   "screen.newvisualkeybing.viewer.profile.default_name": "方案 %s",

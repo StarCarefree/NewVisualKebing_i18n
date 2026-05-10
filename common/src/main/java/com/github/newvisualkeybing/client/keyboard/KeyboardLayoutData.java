@@ -492,7 +492,7 @@ public final class KeyboardLayoutData {
         keys.add(kd(GLFW.GLFW_KEY_LEFT_BRACKET,  "[",    "{",  11.50f, 2.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_RIGHT_BRACKET, "]",    "}",  12.50f, 2.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_BACKSLASH,     "\\",   "|",  13.50f, 2.10f, 1.50f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_DELETE,        "⌦", null, 15.25f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_DELETE,        "\u2326", null, 15.25f, 2.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_END,           "End",  null, 16.25f, 2.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_PAGE_DOWN,     "PgDn", null, 17.25f, 2.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_7,          "7",    null, 18.50f, 2.10f, 1.00f, 1.0f));
@@ -516,7 +516,7 @@ public final class KeyboardLayoutData {
         keys.add(kd(GLFW.GLFW_KEY_KP_5,          "5",    null, 19.50f, 3.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_6,          "6",    null, 20.50f, 3.10f, 1.00f, 1.0f));
 
-        keys.add(kd(GLFW.GLFW_KEY_LEFT_SHIFT,    "⇧ shift", null, 0.00f, 4.10f, 2.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_SHIFT,    "\u21E7 shift", null, 0.00f, 4.10f, 2.25f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_Z,             "Z",    null,  2.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_X,             "X",    null,  3.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_C,             "C",    null,  4.25f, 4.10f, 1.00f, 1.0f));
@@ -527,22 +527,22 @@ public final class KeyboardLayoutData {
         keys.add(kd(GLFW.GLFW_KEY_COMMA,         ",",    "<",   9.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_PERIOD,        ".",    ">",  10.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_SLASH,         "/",    "?",  11.25f, 4.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SHIFT,   "⇧ shift", null, 12.25f, 4.10f, 2.75f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_UP,            "↑", null, 16.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SHIFT,   "\u21E7 shift", null, 12.25f, 4.10f, 2.75f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_UP,            "\u2191", null, 16.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_1,          "1",    null, 18.50f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_2,          "2",    null, 19.50f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_3,          "3",    null, 20.50f, 4.10f, 1.00f, 1.0f));
 
-        keys.add(kd(GLFW.GLFW_KEY_LEFT_CONTROL,  "⌃ ctrl",   null,  0.00f, 5.10f, 1.25f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_LEFT_ALT,      "⌥ option", null,  1.25f, 5.10f, 1.25f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_LEFT_SUPER,    "⌘ cmd",    null,  2.50f, 5.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_CONTROL,  "\u2303 ctrl",   null,  0.00f, 5.10f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_ALT,      "\u2325 option", null,  1.25f, 5.10f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_SUPER,    "\u2318 cmd",    null,  2.50f, 5.10f, 1.50f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_SPACE,         "",         null,  4.00f, 5.10f, 6.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SUPER,   "⌘ cmd",    null, 10.00f, 5.10f, 1.50f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT_ALT,     "⌥ option", null, 11.50f, 5.10f, 1.50f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT_CONTROL, "⌃ ctrl",   null, 13.00f, 5.10f, 2.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_LEFT,          "←",        null, 15.25f, 5.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_DOWN,          "↓",        null, 16.25f, 5.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT,         "→",        null, 17.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SUPER,   "\u2318 cmd",    null, 10.00f, 5.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_ALT,     "\u2325 option", null, 11.50f, 5.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_CONTROL, "\u2303 ctrl",   null, 13.00f, 5.10f, 2.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT,          "\u2190",        null, 15.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_DOWN,          "\u2193",        null, 16.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT,         "\u2192",        null, 17.25f, 5.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_0,          "0",        null, 18.50f, 5.10f, 2.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_DECIMAL,    ".",        null, 20.50f, 5.10f, 1.00f, 1.0f));
 
@@ -610,7 +610,7 @@ public final class KeyboardLayoutData {
         keys.add(kd(GLFW.GLFW_KEY_APOSTROPHE,    "'",    "\"", 11.75f, 3.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_ENTER,         "return", null, 12.75f, 3.10f, 2.50f, 1.0f));
 
-        keys.add(kd(GLFW.GLFW_KEY_LEFT_SHIFT,    "⇧ shift", null, 0.00f, 4.10f, 2.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_SHIFT,    "\u21E7 shift", null, 0.00f, 4.10f, 2.25f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_Z,             "Z",    null,  2.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_X,             "X",    null,  3.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_C,             "C",    null,  4.25f, 4.10f, 1.00f, 1.0f));
@@ -621,18 +621,18 @@ public final class KeyboardLayoutData {
         keys.add(kd(GLFW.GLFW_KEY_COMMA,         ",",    "<",   9.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_PERIOD,        ".",    ">",  10.25f, 4.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_SLASH,         "/",    "?",  11.25f, 4.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SHIFT,   "⇧ shift", null, 12.25f, 4.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_UP,            "↑",       null, 13.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SHIFT,   "\u21E7 shift", null, 12.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_UP,            "\u2191",       null, 13.25f, 4.10f, 1.00f, 1.0f));
 
-        keys.add(kd(GLFW.GLFW_KEY_LEFT_CONTROL,  "⌃ ctrl",   null, 0.00f, 5.10f, 1.25f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_LEFT_ALT,      "⌥ option", null, 1.25f, 5.10f, 1.25f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_LEFT_SUPER,    "⌘ cmd",    null, 2.50f, 5.10f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_CONTROL,  "\u2303 ctrl",   null, 0.00f, 5.10f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_ALT,      "\u2325 option", null, 1.25f, 5.10f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_SUPER,    "\u2318 cmd",    null, 2.50f, 5.10f, 1.25f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_SPACE,         "",         null, 3.75f, 5.10f, 5.50f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SUPER,   "⌘ cmd",    null, 9.25f, 5.10f, 1.50f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT_ALT,     "⌥ option", null, 10.75f, 5.10f, 1.50f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_LEFT,          "←",        null, 12.25f, 5.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_DOWN,          "↓",        null, 13.25f, 5.10f, 1.00f, 1.0f));
-        keys.add(kd(GLFW.GLFW_KEY_RIGHT,         "→",        null, 14.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SUPER,   "\u2318 cmd",    null, 9.25f, 5.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_ALT,     "\u2325 option", null, 10.75f, 5.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT,          "\u2190",        null, 12.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_DOWN,          "\u2193",        null, 13.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT,         "\u2192",        null, 14.25f, 5.10f, 1.00f, 1.0f));
 
         return keys;
     }

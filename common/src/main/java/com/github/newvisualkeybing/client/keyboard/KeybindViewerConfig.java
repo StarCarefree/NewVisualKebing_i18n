@@ -75,7 +75,24 @@ public final class KeybindViewerConfig {
         return data.hideNonSelectedMod;
     }
 
+    public KeyboardLayoutData.Style defaultLayoutStyle() {
+        if (data.defaultLayout == null || data.defaultLayout.isBlank()) {
+            return KeyboardLayoutData.Style.ANSI_104;
+        }
+        try {
+            return KeyboardLayoutData.Style.valueOf(data.defaultLayout);
+        } catch (IllegalArgumentException ignored) {
+            return KeyboardLayoutData.Style.ANSI_104;
+        }
+    }
+
+    public void setDefaultLayoutStyle(KeyboardLayoutData.Style style) {
+        data.defaultLayout = style == null ? null : style.name();
+        save();
+    }
+
     private static final class Data {
         boolean hideNonSelectedMod;
+        String defaultLayout;
     }
 }

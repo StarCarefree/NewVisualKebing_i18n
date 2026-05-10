@@ -50,7 +50,7 @@ public class KeybindViewerScreen extends Screen {
     private final KeybindProfileStore profileStore = KeybindProfileStore.global();
     private final KeybindViewerConfig viewerConfig = KeybindViewerConfig.global();
     private final KeybindProfilePanel profilePanel = new KeybindProfilePanel(
-            profileStore, this::onProfileMutation, this::showNotice);
+            profileStore, this::onProfileMutation, this::showNotice, this::releaseSearchFocus);
     private final KeybindKeyboardRenderer keyboardRenderer = new KeybindKeyboardRenderer(scanner);
     private final KeybindMouseRenderer mouseRenderer = new KeybindMouseRenderer(scanner);
     private final KeybindDetailPanel detailPanel = new KeybindDetailPanel(scanner, profileStore);
@@ -63,11 +63,15 @@ public class KeybindViewerScreen extends Screen {
     private MCButton profileToggleButton;
     private MCButton layoutButton;
 
-    private KeyboardLayoutData.Style currentStyle = KeyboardLayoutData.Style.ANSI_104;
+    private KeyboardLayoutData.Style currentStyle = KeybindViewerConfig.global().defaultLayoutStyle();
 
     private String noticeMsg;
     private long noticeTime;
     private float animTick;
+    private Integer tooltipHoverKey;
+    private long tooltipHoverStartMs;
+    private static final long TOOLTIP_DELAY_MS = 220;
+    private static final long TOOLTIP_FADE_MS = 160;
 
     private FilterTab activeFilter = FilterTab.ALL;
     private Set<Integer> textFilteredKeys;
@@ -166,6 +170,12 @@ public class KeybindViewerScreen extends Screen {
 
         layoutButton = MCButton.create(xLayout, btnY, btnLayoutW, btnH,
                 layoutLabel(currentStyle), button -> {
+            if (Screen.hasShiftDown()) {
+                viewerConfig.setDefaultLayoutStyle(currentStyle);
+                showNotice(Component.translatable("screen.newvisualkeybing.viewer.layout.default_set",
+                        layoutLabel(currentStyle).getString()).getString());
+                return;
+            }
             currentStyle = currentStyle.next();
             button.setMessage(layoutLabel(currentStyle));
         });
@@ -295,7 +305,23 @@ public class KeybindViewerScreen extends Screen {
 
         if (hoveredVirtualKey != null
                 && (selectedVirtualKey == null || hoveredVirtualKey.intValue() != selectedVirtualKey.intValue())) {
-            tooltipRenderer.render(g, font, width, height, hoveredVirtualKey, mouseX, mouseY);
+            long nowMs = System.currentTimeMillis();
+            if (tooltipHoverKey == null || hoveredVirtualKey.intValue() != tooltipHoverKey.intValue()) {
+                tooltipHoverKey = hoveredVirtualKey;
+                tooltipHoverStartMs = nowMs;
+            }
+            long elapsed = nowMs - tooltipHoverStartMs;
+            if (elapsed >= TOOLTIP_DELAY_MS) {
+                float progress = Math.min(1f, (elapsed - TOOLTIP_DELAY_MS) / (float) TOOLTIP_FADE_MS);
+                progress = UITheme.easeOutCubic(progress);
+                float dy = (1f - progress) * 8f;
+                g.pose().pushPose();
+                g.pose().translate(0f, dy, 0f);
+                tooltipRenderer.render(g, font, width, height, hoveredVirtualKey, mouseX, mouseY);
+                g.pose().popPose();
+            }
+        } else {
+            tooltipHoverKey = null;
         }
 
         renderNotice(g);
@@ -525,6 +551,7 @@ public class KeybindViewerScreen extends Screen {
         Integer hover = keyboardRenderer.render(g, font, currentStyle,
                 keyboardX, keyboardY, keyScale,
                 selectedVirtualKey, this::isVisibleKey, this::isHiddenBySelectedMod,
+                this::isSearchMatch,
                 mouseX, mouseY, animTick);
         if (hover != null) hoveredVirtualKey = hover;
     }
@@ -616,6 +643,7 @@ public class KeybindViewerScreen extends Screen {
     private void renderMousePanel(GuiGraphics g, int mouseX, int mouseY) {
         Integer hover = mouseRenderer.render(g, font, mousePanelX, mousePanelY, mousePanelW, mousePanelH,
                 selectedVirtualKey, this::isVisibleKey, this::isHiddenBySelectedMod,
+                this::isSearchMatch,
                 mouseX, mouseY, animTick);
         if (hover != null) hoveredVirtualKey = hover;
     }
@@ -697,6 +725,15 @@ public class KeybindViewerScreen extends Screen {
     private void onProfileMutation() {
         scanner.scan();
         refreshFilters();
+    }
+
+    private void releaseSearchFocus() {
+        if (searchBox != null && searchBox.isFocused()) {
+            searchBox.setFocused(false);
+        }
+        if (this.getFocused() == searchBox) {
+            this.setFocused(null);
+        }
     }
 
     private void onPriorityMutation() {
@@ -823,6 +860,17 @@ public class KeybindViewerScreen extends Screen {
         return UITheme.lerpColor(c.accent(), c.accentLight(), pulse);
     }
 
+    static int searchPulseColor(float animTick) {
+        var c = UITheme.colors();
+        float pulse = 0.5f + 0.5f * (float) Math.sin(animTick * 0.22f);
+        return UITheme.lerpColor(c.success(), c.accentLight(), pulse);
+    }
+
+    static int searchPulseAlpha(float animTick) {
+        float pulse = 0.5f + 0.5f * (float) Math.sin(animTick * 0.22f);
+        return 0x50 + Math.round(pulse * 0x40);
+    }
+
     private int statusAccentColor(KeyBindingScanner.KeyStatus status) {
         var c = UITheme.colors();
         return switch (status) {
@@ -865,6 +913,10 @@ public class KeybindViewerScreen extends Screen {
         return matchesFilter(textFilteredKeys, virtualKey)
                 && matchesFilter(tabFilteredKeys, virtualKey)
                 && matchesFilter(modFilteredKeys, virtualKey);
+    }
+
+    private boolean isSearchMatch(int virtualKey) {
+        return textFilteredKeys != null && textFilteredKeys.contains(virtualKey);
     }
 
     private boolean isHiddenBySelectedMod(int virtualKey) {

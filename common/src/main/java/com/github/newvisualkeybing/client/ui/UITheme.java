@@ -438,6 +438,12 @@ public final class UITheme {
         return (color & 0x00FFFFFF) | (alpha << 24);
     }
 
+    public static int multiplyAlpha(int color, float factor) {
+        int a = (color >>> 24) & 0xFF;
+        int scaled = Math.round(a * Math.max(0f, Math.min(1f, factor)));
+        return (color & 0x00FFFFFF) | (scaled << 24);
+    }
+
     public static int brighten(int color, float factor) {
         int a = (color >> 24) & 0xFF;
         int r = Math.min(255, (int) (((color >> 16) & 0xFF) * (1 + factor)));

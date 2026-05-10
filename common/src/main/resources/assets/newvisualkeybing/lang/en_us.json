@@ -91,6 +91,7 @@
   "screen.newvisualkeybing.viewer.layout.compact_60": "60",
   "screen.newvisualkeybing.viewer.layout.mac_full": "Mac Full",
   "screen.newvisualkeybing.viewer.layout.mac_compact": "Mac Compact",
+  "screen.newvisualkeybing.viewer.layout.default_set": "Default layout: %s (Shift+click to change)",
   "screen.newvisualkeybing.viewer.profile.title": "Profiles",
   "screen.newvisualkeybing.viewer.profile.empty": "No saved profiles",
   "screen.newvisualkeybing.viewer.profile.default_name": "Profile %s",
