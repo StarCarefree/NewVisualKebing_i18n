@@ -117,6 +117,10 @@ public class KeybindViewerScreen extends Screen {
     private long cachedModEntriesVersion = -1L;
     private String cachedModEntriesQuery;
     private List<Map.Entry<String, String>> cachedModEntries = List.of();
+    private long cachedModRowsVersion = -1L;
+    private String cachedModRowsQuery;
+    private int cachedModRowsWidth = -1;
+    private List<ModRow> cachedModRows = List.of();
     private final String[] tabLabels = new String[FilterTab.values().length];
     private final int[] tabWidths = new int[FilterTab.values().length];
     private final String[] legendLabels = new String[4];
@@ -498,15 +502,15 @@ public class KeybindViewerScreen extends Screen {
         int clearY = y + h - PANEL_PAD - ACTION_BTN_H;
         int toggleY = clearY - ACTION_BTN_H - ACTION_BTN_GAP;
         int listBottom = toggleY - ACTION_BTN_GAP;
-        List<Map.Entry<String, String>> mods = filteredModEntries();
+        List<ModRow> mods = filteredModRows(fieldW);
         int rowH = 18;
         int visibleRows = Math.max(1, (listBottom - listY) / rowH);
         modScrollOffset = Mth.clamp(modScrollOffset, 0, Math.max(0, mods.size() - visibleRows));
 
         int rowY = listY;
         for (int i = modScrollOffset; i < mods.size() && i < modScrollOffset + visibleRows; i++) {
-            Map.Entry<String, String> mod = mods.get(i);
-            boolean selected = mod.getKey().equals(selectedModId);
+            ModRow mod = mods.get(i);
+            boolean selected = mod.modId().equals(selectedModId);
             boolean hovered = inside(mouseX, mouseY, fieldX, rowY, fieldW, rowH - 1);
             int fill = selected ? UITheme.lerpColor(c.widgetBg(), c.accent(), 0.40f)
                     : hovered ? UITheme.lerpColor(c.widgetBg(), c.accentAlt(), 0.18f) : c.widgetBg();
@@ -516,21 +520,11 @@ public class KeybindViewerScreen extends Screen {
                 g.fill(fieldX + 6, rowY + rowH - 2, fieldX + fieldW - 6, rowY + rowH - 1,
                         UITheme.withAlpha(c.divider(), 0x30));
             }
-            KeyBindingScanner.ModStats stats = scanner.getModStats(mod.getKey());
-            String count = stats.conflicts() > 0
-                    ? Component.translatable("screen.newvisualkeybing.viewer.mod_count_conflict",
-                            stats.bindings(), stats.conflicts()).getString()
-                    : Component.translatable("screen.newvisualkeybing.viewer.mod_count",
-                            stats.bindings()).getString();
-            int countMaxW = Math.max(30, fieldW / 2);
-            count = fitToWidth(font, count, countMaxW);
-            int countW = font.width(count);
             int textY = rowY + (rowH - 1 - font.lineHeight) / 2;
-            String modName = fitToWidth(font, mod.getValue(), Math.max(24, fieldW - countW - 16));
-            g.drawString(font, modName, fieldX + 6, textY,
+            g.drawString(font, mod.name(), fieldX + 6, textY,
                     selected ? 0xFFFFFFFF : c.textSecondary(), false);
-            g.drawString(font, count, fieldX + fieldW - countW - 6, textY,
-                    stats.conflicts() > 0 ? c.danger() : c.textMuted(), false);
+            g.drawString(font, mod.count(), fieldX + fieldW - mod.countW() - 6, textY,
+                    mod.conflict() ? c.danger() : c.textMuted(), false);
             rowY += rowH;
         }
 
@@ -948,6 +942,39 @@ public class KeybindViewerScreen extends Screen {
         cachedModEntries = entries;
         return cachedModEntries;
     }
+
+    private List<ModRow> filteredModRows(int fieldW) {
+        String query = modSearchQuery.toLowerCase(Locale.ROOT);
+        long version = scanner.version();
+        if (version == cachedModRowsVersion
+                && query.equals(cachedModRowsQuery)
+                && fieldW == cachedModRowsWidth) {
+            return cachedModRows;
+        }
+        List<Map.Entry<String, String>> entries = filteredModEntries();
+        List<ModRow> rows = new ArrayList<>(entries.size());
+        int countMaxW = Math.max(30, fieldW / 2);
+        for (Map.Entry<String, String> entry : entries) {
+            KeyBindingScanner.ModStats stats = scanner.getModStats(entry.getKey());
+            boolean conflict = stats.conflicts() > 0;
+            String count = conflict
+                    ? Component.translatable("screen.newvisualkeybing.viewer.mod_count_conflict",
+                            stats.bindings(), stats.conflicts()).getString()
+                    : Component.translatable("screen.newvisualkeybing.viewer.mod_count",
+                            stats.bindings()).getString();
+            count = fitToWidth(font, count, countMaxW);
+            int countW = font.width(count);
+            String name = fitToWidth(font, entry.getValue(), Math.max(24, fieldW - countW - 16));
+            rows.add(new ModRow(entry.getKey(), name, count, countW, conflict));
+        }
+        cachedModRowsVersion = version;
+        cachedModRowsQuery = query;
+        cachedModRowsWidth = fieldW;
+        cachedModRows = rows;
+        return cachedModRows;
+    }
+
+    private record ModRow(String modId, String name, String count, int countW, boolean conflict) {}
 
     private static String trim(String value, int maxLength) {
         return value.length() <= maxLength ? value : value.substring(0, maxLength - 2) + "..";

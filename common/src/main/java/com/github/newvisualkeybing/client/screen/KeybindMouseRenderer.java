@@ -43,9 +43,13 @@ final class KeybindMouseRenderer {
     private int cachedBodyH = Integer.MIN_VALUE;
     private float cachedMouseScale = Float.NaN;
     private final int[] labelWidths = new int[KeyboardLayoutData.MOUSE_KEYS.size()];
+    private final KeyBindingScanner.KeyStatus[] cachedStatuses =
+            new KeyBindingScanner.KeyStatus[KeyboardLayoutData.MOUSE_KEYS.size()];
+    private final int[] cachedBindingCounts = new int[KeyboardLayoutData.MOUSE_KEYS.size()];
     private Font cachedLabelFont;
     private final float[] hoverProgress = new float[KeyboardLayoutData.MOUSE_KEYS.size()];
     private final float[] selectProgress = new float[KeyboardLayoutData.MOUSE_KEYS.size()];
+    private long cachedDataVersion = Long.MIN_VALUE;
     private long lastFrameMs;
 
     KeybindMouseRenderer(KeyBindingScanner scanner) {
@@ -83,6 +87,7 @@ final class KeybindMouseRenderer {
         int rTop = Math.round(MOUSE_TOP_R * mouseScale);
         int rBot = Math.round(MOUSE_BOT_R * mouseScale);
         updateBounds(bodyX, bodyY, bodyW, bodyH, mouseScale);
+        refreshInputData();
 
         int shadow = UITheme.withAlpha(0x000000, 0x40);
         UITheme.fillRoundedRectEx(g, bodyX - 1, bodyY + 3, bodyW + 2, bodyH,
@@ -121,7 +126,6 @@ final class KeybindMouseRenderer {
             if (b == null) continue;
             KeyboardLayoutData.KeyDef key = KeyboardLayoutData.MOUSE_KEYS.get(i);
             boolean wheel = KeyboardLayoutData.isWheel(key.glfwKey());
-            int mouseButton = wheel ? -1 : KeyboardLayoutData.virtualToMouseBtn(key.glfwKey());
             boolean matched = isVisibleKey.test(key.glfwKey());
             boolean hidden = isHiddenKey.test(key.glfwKey());
             boolean hover = KeybindViewerScreen.inside(mouseX, mouseY, b.x, b.y, b.w, b.h);
@@ -136,10 +140,8 @@ final class KeybindMouseRenderer {
             float hoverEase = UITheme.easeOutCubic(hoverProgress[i]);
             float selectEase = UITheme.easeOutCubic(selectProgress[i]);
 
-            KeyBindingScanner.KeyStatus status = wheel
-                    ? KeyBindingScanner.KeyStatus.FREE
-                    : scanner.getMouseStatus(mouseButton);
-            int bindingCount = wheel ? 0 : scanner.getMouseBindingCount(mouseButton);
+            KeyBindingScanner.KeyStatus status = cachedStatuses[i];
+            int bindingCount = cachedBindingCounts[i];
             int radius = Math.max(3, Math.min(6, Math.min(b.w, b.h) / 4));
 
             boolean searchMatch = matched && !hidden && isSearchMatch.test(key.glfwKey());
@@ -197,6 +199,23 @@ final class KeybindMouseRenderer {
             if (!hidden) renderBindingBadge(g, font, b, bindingCount, status);
         }
         return hovered;
+    }
+
+    private void refreshInputData() {
+        long version = scanner.version();
+        if (cachedDataVersion == version) return;
+        cachedDataVersion = version;
+        for (int i = 0; i < KeyboardLayoutData.MOUSE_KEYS.size(); i++) {
+            KeyboardLayoutData.KeyDef key = KeyboardLayoutData.MOUSE_KEYS.get(i);
+            if (KeyboardLayoutData.isWheel(key.glfwKey())) {
+                cachedStatuses[i] = KeyBindingScanner.KeyStatus.FREE;
+                cachedBindingCounts[i] = 0;
+            } else {
+                int mouseButton = KeyboardLayoutData.virtualToMouseBtn(key.glfwKey());
+                cachedStatuses[i] = scanner.getMouseStatus(mouseButton);
+                cachedBindingCounts[i] = scanner.getMouseBindingCount(mouseButton);
+            }
+        }
     }
 
     private static void renderMouseButtonSurface(GuiGraphics g, Rect b, int radius,

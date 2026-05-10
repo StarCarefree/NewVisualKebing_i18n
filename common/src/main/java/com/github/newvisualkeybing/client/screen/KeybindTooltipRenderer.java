@@ -29,6 +29,7 @@ final class KeybindTooltipRenderer {
     private String clickHintText;
     private String unknownContextText;
     private boolean cacheReady;
+    private TooltipLayout cachedLayout;
 
     KeybindTooltipRenderer(KeyBindingScanner scanner) {
         this.scanner = scanner;
@@ -59,8 +60,91 @@ final class KeybindTooltipRenderer {
     }
 
     void render(GuiGraphics g, Font font, int screenW, int screenH, int virtualKey, int mouseX, int mouseY) {
-        ensureCache();
+        TooltipLayout layout = layout(font, screenW, virtualKey);
         var c = UITheme.colors();
+        List<KeyBindingScanner.KeyBindingInfo> bindings = layout.bindings();
+        KeyBindingScanner.KeyStatus status = layout.status();
+        int innerW = layout.innerW();
+        int totalW = layout.totalW();
+        int totalH = layout.totalH();
+        int chipW = layout.chipW();
+        int titleH = layout.titleH();
+        int rowH = layout.rowH();
+        int padX = 10;
+        int padY = 8;
+        int tx = clamp(mouseX + 12, 4, screenW - totalW - 4);
+        int ty = clamp(mouseY + 12, 4, screenH - totalH - 4);
+
+        UITheme.renderTooltipBackground(g, tx, ty, totalW, totalH);
+        UITheme.fillRoundedRect(g, tx, ty, totalW, 2, 2, statusAccentColor(status));
+
+        int curX = tx + padX;
+        int curY = ty + padY;
+
+        int chipX = tx + totalW - padX - chipW;
+        renderStatusChip(g, font, chipX, curY, status, false);
+        g.drawString(font, layout.keyNameFit(), curX, curY + 1, c.textPrimary(), true);
+        curY += titleH + 4;
+
+        g.fill(curX, curY, curX + innerW, curY + 1, UITheme.withAlpha(c.divider(), 0x90));
+        curY += 4;
+        g.drawString(font, layout.statusLineFit(), curX, curY, c.textSecondary(), true);
+        curY += font.lineHeight + 5;
+
+        if (layout.isWheel()) {
+            g.drawString(font, wheelHintText, curX, curY, c.textMuted(), true);
+            curY += font.lineHeight + 4;
+        } else if (bindings.isEmpty()) {
+            g.drawString(font, unboundText, curX, curY, c.textMuted(), true);
+            curY += font.lineHeight + 4;
+        } else {
+            g.drawString(font, layout.summaryFit(), curX, curY, c.textSecondary(), true);
+            curY += font.lineHeight + 5;
+            for (BindingRowLayout row : layout.rows()) {
+                KeyBindingScanner.KeyBindingInfo info = row.info();
+                int sideColor = info.self() ? c.accent() : UITheme.withAlpha(c.widgetBorder(), 0xC0);
+                UITheme.fillRoundedRect(g, curX, curY, innerW, rowH - 1, 4,
+                        UITheme.withAlpha(c.widgetBg(), info.self() ? 0xA0 : 0x70));
+                g.fill(curX, curY + 2, curX + 2, curY + rowH - 2, sideColor);
+
+                int textY = curY + 2;
+                g.drawString(font, row.actionFit(), curX + 6, textY,
+                        info.self() ? c.accent() : c.textPrimary(), true);
+                int rightX = curX + innerW - row.modW();
+                g.drawString(font, row.modText(), rightX, textY, c.textSecondary(), true);
+                if (!row.ctxTag().isEmpty()) {
+                    int tagX = rightX - row.ctxTagW() - 6;
+                    g.drawString(font, row.ctxTag(), tagX, textY, c.accentAlt(), true);
+                }
+                g.drawString(font, row.metaFit(),
+                        curX + 6, curY + font.lineHeight + 4, c.textMuted(), true);
+                g.drawString(font, row.keyMetaFit(),
+                        curX + 6, curY + font.lineHeight * 2 + 6, UITheme.withAlpha(c.textMuted(), 0xD0), true);
+                curY += rowH;
+            }
+            if (layout.moreText() != null) {
+                g.drawString(font, layout.moreText(), curX, curY, c.textMuted(), true);
+                curY += font.lineHeight + 2;
+            }
+        }
+
+        if (status == KeyBindingScanner.KeyStatus.CONFLICT) {
+            g.drawString(font, layout.conflictFit(), curX, curY, c.dangerColor(), true);
+            curY += font.lineHeight + 4;
+        }
+
+        g.drawString(font, layout.clickFit(), curX, curY, c.textMuted(), true);
+    }
+
+    private TooltipLayout layout(Font font, int screenW, int virtualKey) {
+        ensureCache();
+        long version = scanner.version();
+        if (cachedLayout != null
+                && cachedLayout.virtualKey() == virtualKey
+                && cachedLayout.scannerVersion() == version
+                && cachedLayout.screenW() == screenW) {
+            return cachedLayout;
+        }
         boolean isWheel = KeyboardLayoutData.isWheel(virtualKey);
         boolean isMouseKey = KeyboardLayoutData.isMouse(virtualKey);
         String keyName = scanner.getVirtualKeyLabel(virtualKey);
@@ -79,7 +163,7 @@ final class KeybindTooltipRenderer {
             status = scanner.getStatus(virtualKey);
         }
 
-        int chipW = renderStatusChip(g, font, 0, 0, status, true);
+        int chipW = statusChipWidth(font, status);
         int padX = 10;
         int padY = 8;
         int maxInnerW = Math.max(140, Math.min(340, screenW - 32));
@@ -121,83 +205,43 @@ final class KeybindTooltipRenderer {
 
         int totalW = innerW + padX * 2;
         int totalH = contentH + padY * 2;
-        int tx = clamp(mouseX + 12, 4, screenW - totalW - 4);
-        int ty = clamp(mouseY + 12, 4, screenH - totalH - 4);
-
-        UITheme.renderTooltipBackground(g, tx, ty, totalW, totalH);
-        UITheme.fillRoundedRect(g, tx, ty, totalW, 2, 2, statusAccentColor(status));
-
-        int curX = tx + padX;
-        int curY = ty + padY;
-
-        int chipX = tx + totalW - padX - chipW;
-        renderStatusChip(g, font, chipX, curY, status, false);
-        g.drawString(font, fitToWidth(font, keyName, chipX - curX - 6), curX, curY + 1, c.textPrimary(), true);
-        curY += titleH + 4;
-
-        g.fill(curX, curY, curX + innerW, curY + 1, UITheme.withAlpha(c.divider(), 0x90));
-        curY += 4;
-        g.drawString(font, fitToWidth(font, statusLine, innerW), curX, curY, c.textSecondary(), true);
-        curY += font.lineHeight + 5;
-
-        if (isWheel) {
-            g.drawString(font, wheelHintText, curX, curY, c.textMuted(), true);
-            curY += font.lineHeight + 4;
-        } else if (bindings.isEmpty()) {
-            g.drawString(font, unboundText, curX, curY, c.textMuted(), true);
-            curY += font.lineHeight + 4;
-        } else {
+        String keyNameFit = fitToWidth(font, keyName, innerW - chipW - 6);
+        String statusLineFit = fitToWidth(font, statusLine, innerW);
+        String summaryFit = null;
+        String moreText = null;
+        BindingRowLayout[] rows = new BindingRowLayout[maxRows];
+        if (!isWheel && !bindings.isEmpty()) {
             String summary = Component.translatable("screen.newvisualkeybing.viewer.tooltip.summary",
                     bindings.size(), countSources(bindings), countCategories(bindings), countContexts(bindings)).getString();
-            g.drawString(font, fitToWidth(font, summary, innerW), curX, curY, c.textSecondary(), true);
-            curY += font.lineHeight + 5;
+            summaryFit = fitToWidth(font, summary, innerW);
             for (int i = 0; i < maxRows; i++) {
                 KeyBindingScanner.KeyBindingInfo info = bindings.get(i);
-                int sideColor = info.self() ? c.accent() : UITheme.withAlpha(c.widgetBorder(), 0xC0);
-                UITheme.fillRoundedRect(g, curX, curY, innerW, rowH - 1, 4,
-                        UITheme.withAlpha(c.widgetBg(), info.self() ? 0xA0 : 0x70));
-                g.fill(curX, curY + 2, curX + 2, curY + rowH - 2, sideColor);
-
                 String ctxTag = contextTag(info.conflictContext());
-                int tagW = ctxTag.isEmpty() ? 0 : font.width(ctxTag) + 6;
+                int ctxTagW = ctxTag.isEmpty() ? 0 : font.width(ctxTag);
+                int tagW = ctxTag.isEmpty() ? 0 : ctxTagW + 6;
                 int modMaxW = Math.max(44, Math.min(innerW / 3, innerW - 74));
                 String modText = fitToWidth(font, info.modName(), modMaxW);
                 int modW = font.width(modText);
                 int rightBlockW = tagW + modW + 4;
                 String actionFit = fitToWidth(font, info.actionName(), Math.max(30, innerW - 10 - rightBlockW));
-
-                int textY = curY + 2;
-                g.drawString(font, actionFit, curX + 6, textY,
-                        info.self() ? c.accent() : c.textPrimary(), true);
-                int rightX = curX + innerW - modW;
-                g.drawString(font, modText, rightX, textY, c.textSecondary(), true);
-                if (!ctxTag.isEmpty()) {
-                    int tagX = rightX - font.width(ctxTag) - 6;
-                    g.drawString(font, ctxTag, tagX, textY, c.accentAlt(), true);
-                }
                 String meta = info.categoryName() + " | " + contextName(info.conflictContext());
-                g.drawString(font, fitToWidth(font, meta, innerW - 6),
-                        curX + 6, curY + font.lineHeight + 4, c.textMuted(), true);
                 String keyMeta = info.translationKey() + " | "
                         + Component.translatable("screen.newvisualkeybing.viewer.tooltip.default_key",
                         info.defaultKeyName()).getString();
-                g.drawString(font, fitToWidth(font, keyMeta, innerW - 6),
-                        curX + 6, curY + font.lineHeight * 2 + 6, UITheme.withAlpha(c.textMuted(), 0xD0), true);
-                curY += rowH;
+                rows[i] = new BindingRowLayout(info, ctxTag, ctxTagW, actionFit, modText, modW,
+                        fitToWidth(font, meta, innerW - 6), fitToWidth(font, keyMeta, innerW - 6));
             }
             if (bindings.size() > maxRows) {
-                g.drawString(font, Component.translatable("screen.newvisualkeybing.viewer.tooltip.more",
-                        bindings.size() - maxRows).getString(), curX, curY, c.textMuted(), true);
-                curY += font.lineHeight + 2;
+                moreText = Component.translatable("screen.newvisualkeybing.viewer.tooltip.more",
+                        bindings.size() - maxRows).getString();
             }
         }
 
-        if (status == KeyBindingScanner.KeyStatus.CONFLICT) {
-            g.drawString(font, fitToWidth(font, conflictWarningText, innerW), curX, curY, c.dangerColor(), true);
-            curY += font.lineHeight + 4;
-        }
-
-        g.drawString(font, fitToWidth(font, clickHintText, innerW), curX, curY, c.textMuted(), true);
+        cachedLayout = new TooltipLayout(virtualKey, version, screenW, isWheel, bindings, status,
+                keyNameFit, statusLineFit, summaryFit, moreText,
+                fitToWidth(font, conflictWarningText, innerW), fitToWidth(font, clickHintText, innerW),
+                innerW, totalW, totalH, chipW, titleH, rowH, rows);
+        return cachedLayout;
     }
 
     private int renderStatusChip(GuiGraphics g, Font font, int x, int y,
@@ -212,7 +256,7 @@ final class KeybindTooltipRenderer {
         };
         String label = statusLabels.get(status);
         int chipH = 12;
-        int chipW = font.width(label) + 14;
+        int chipW = statusChipWidth(font, status);
         if (measureOnly) return chipW;
         int chipFill = UITheme.lerpColor(c.widgetBg(), dot, 0.22f);
         UITheme.fillRoundedRect(g, x, y, chipW, chipH, 6, UITheme.withAlpha(chipFill, 0xE0));
@@ -220,6 +264,10 @@ final class KeybindTooltipRenderer {
         UITheme.fillRoundedRect(g, x + 4, y + (chipH - 4) / 2, 4, 4, 2, dot);
         g.drawString(font, label, x + 10, y + (chipH - font.lineHeight) / 2 + 1, textColor, true);
         return chipW;
+    }
+
+    private int statusChipWidth(Font font, KeyBindingScanner.KeyStatus status) {
+        return font.width(statusLabels.get(status)) + 14;
     }
 
     private static String fitToWidth(Font font, String text, int maxW) {
@@ -329,4 +377,17 @@ final class KeybindTooltipRenderer {
         String name = contextNames.get(ctx);
         return name != null ? name : unknownContextText;
     }
+
+    private record TooltipLayout(int virtualKey, long scannerVersion, int screenW, boolean isWheel,
+                                 List<KeyBindingScanner.KeyBindingInfo> bindings,
+                                 KeyBindingScanner.KeyStatus status,
+                                 String keyNameFit, String statusLineFit,
+                                 String summaryFit, String moreText,
+                                 String conflictFit, String clickFit,
+                                 int innerW, int totalW, int totalH, int chipW,
+                                 int titleH, int rowH, BindingRowLayout[] rows) {}
+
+    private record BindingRowLayout(KeyBindingScanner.KeyBindingInfo info, String ctxTag, int ctxTagW,
+                                    String actionFit, String modText, int modW,
+                                    String metaFit, String keyMetaFit) {}
 }

@@ -17,11 +17,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * Modal popover triggered from the Viewer's detail panel "Modify" button.
- * Shows every KeyMapping bound to the current virtual key, each with quick Rebind / Unbind controls.
- * In LISTEN mode the popover transforms into "press a key for X" with ESC to cancel.
- */
 final class KeybindQuickEditPopover {
 
     private static final int CARD_W = 336;
@@ -47,6 +42,15 @@ final class KeybindQuickEditPopover {
     private int closeX, closeY;
     private int headerCloseX, headerCloseY;
     private final List<RowHit> hits = new ArrayList<>();
+    private final List<KeyMapping> cachedMappings = new ArrayList<>();
+    private int cachedMappingsVirtualKey = Integer.MIN_VALUE;
+    private long cachedMappingsVersion = Long.MIN_VALUE;
+    private String titleLabel;
+    private String closeLabel;
+    private String emptyLabel;
+    private String rebindLabel;
+    private String waitingHint;
+    private boolean textCacheReady;
 
     private record RowHit(int rebindX, int rebindY, int unbindX, int unbindY, int btnH, KeyMapping mapping) {}
 
@@ -62,6 +66,7 @@ final class KeybindQuickEditPopover {
         this.open = true;
         this.virtualKey = virtualKey;
         this.listenMapping = null;
+        invalidateMappings();
     }
 
     void close() {
@@ -71,9 +76,9 @@ final class KeybindQuickEditPopover {
 
     void render(GuiGraphics g, Font font, int screenW, int screenH, int mouseX, int mouseY) {
         if (!open) return;
+        ensureTextCache();
         var c = UITheme.colors();
 
-        // Dim backdrop
         g.fill(0, 0, screenW, screenH, 0xC0000000);
 
         List<KeyMapping> mappings = collectMappings();
@@ -88,10 +93,8 @@ final class KeybindQuickEditPopover {
 
         UITheme.drawGlassPanel(g, cardX, cardY, cardW, cardH, 10);
 
-        // Header
         String keyLabel = scanner.getVirtualKeyLabel(virtualKey);
-        String title = Component.translatable("screen.newvisualkeybing.viewer.quick_edit.title").getString()
-                + ": " + keyLabel;
+        String title = titleLabel + ": " + keyLabel;
         g.drawString(font, title, cardX + CARD_PAD, cardY + (HEADER_H - font.lineHeight) / 2 + 2,
                 c.textPrimary(), false);
         g.fill(cardX + 8, cardY + HEADER_H - 1, cardX + cardW - 8, cardY + HEADER_H,
@@ -110,13 +113,21 @@ final class KeybindQuickEditPopover {
             renderBrowseMode(g, font, mappings, mouseX, mouseY, c);
         }
 
-        // Footer Close
         closeX = cardX + (cardW - CLOSE_BTN_W) / 2;
         closeY = cardY + cardH - FOOTER_H + (FOOTER_H - 20) / 2;
         boolean closeHover = KeybindViewerScreen.inside(mouseX, mouseY, closeX, closeY, CLOSE_BTN_W, 20);
         KeybindViewerScreen.renderActionButton(g, font, closeX, closeY, CLOSE_BTN_W, 20,
-                Component.translatable("screen.newvisualkeybing.viewer.quick_edit.close").getString(),
-                c.widgetBorder(), closeHover);
+                closeLabel, c.widgetBorder(), closeHover);
+    }
+
+    private void ensureTextCache() {
+        if (textCacheReady) return;
+        titleLabel = Component.translatable("screen.newvisualkeybing.viewer.quick_edit.title").getString();
+        closeLabel = Component.translatable("screen.newvisualkeybing.viewer.quick_edit.close").getString();
+        emptyLabel = Component.translatable("screen.newvisualkeybing.viewer.quick_edit.empty").getString();
+        rebindLabel = Component.translatable("screen.newvisualkeybing.viewer.quick_edit.rebind").getString();
+        waitingHint = Component.translatable("screen.newvisualkeybing.viewer.waiting_hint").getString();
+        textCacheReady = true;
     }
 
     private void renderBrowseMode(GuiGraphics g, Font font, List<KeyMapping> mappings,
@@ -126,8 +137,7 @@ final class KeybindQuickEditPopover {
         int rowW = cardW - CARD_PAD * 2;
 
         if (mappings.isEmpty()) {
-            String empty = Component.translatable("screen.newvisualkeybing.viewer.quick_edit.empty").getString();
-            g.drawString(font, empty, cardX + (cardW - font.width(empty)) / 2,
+            g.drawString(font, emptyLabel, cardX + (cardW - font.width(emptyLabel)) / 2,
                     rowsTop + (ROW_H - font.lineHeight) / 2, c.textMuted(), false);
             return;
         }
@@ -140,7 +150,6 @@ final class KeybindQuickEditPopover {
             UITheme.fillRoundedRect(g, rowX, rowY, rowW, ROW_H, 4,
                     UITheme.withAlpha(c.widgetBg(), 0x66));
 
-            // Action label (truncated to fit before buttons)
             int rebindBtnX = rowX + rowW - BTN_UNBIND_W - BTN_GAP - BTN_REBIND_W;
             int unbindBtnX = rowX + rowW - BTN_UNBIND_W;
             int btnY = rowY + (ROW_H - btnH) / 2;
@@ -153,8 +162,7 @@ final class KeybindQuickEditPopover {
 
             boolean rebindHover = KeybindViewerScreen.inside(mouseX, mouseY, rebindBtnX, btnY, BTN_REBIND_W, btnH);
             KeybindViewerScreen.renderActionButton(g, font, rebindBtnX, btnY, BTN_REBIND_W, btnH,
-                    Component.translatable("screen.newvisualkeybing.viewer.quick_edit.rebind").getString(),
-                    c.accent(), rebindHover);
+                    rebindLabel, c.accent(), rebindHover);
 
             boolean unbindHover = KeybindViewerScreen.inside(mouseX, mouseY, unbindBtnX, btnY, BTN_UNBIND_W, btnH);
             renderXButton(g, unbindBtnX, btnY, BTN_UNBIND_W, unbindHover, c.textSecondary(), c.danger());
@@ -167,17 +175,15 @@ final class KeybindQuickEditPopover {
         int contentTop = cardY + HEADER_H + CARD_PAD;
         String action = Component.translatable(listenMapping.getName()).getString();
         String l1 = Component.translatable("screen.newvisualkeybing.viewer.quick_edit.listening", action).getString();
-        String l2 = Component.translatable("screen.newvisualkeybing.viewer.waiting_hint").getString();
         g.drawString(font, l1, cardX + (cardW - font.width(l1)) / 2, contentTop + 12,
                 c.accentLight(), true);
-        g.drawString(font, l2, cardX + (cardW - font.width(l2)) / 2, contentTop + 36,
+        g.drawString(font, waitingHint, cardX + (cardW - font.width(waitingHint)) / 2, contentTop + 36,
                 c.textMuted(), false);
     }
 
     boolean mouseClicked(double mx, double my, int button) {
         if (!open) return false;
 
-        // Listen mode: a mouse press binds to that mouse button
         if (listenMapping != null) {
             if (button >= GLFW.GLFW_MOUSE_BUTTON_1 && button <= GLFW.GLFW_MOUSE_BUTTON_LAST) {
                 applyKey(InputConstants.Type.MOUSE.getOrCreate(button));
@@ -194,7 +200,6 @@ final class KeybindQuickEditPopover {
             return true;
         }
 
-        // Per-row buttons
         for (RowHit h : hits) {
             if (KeybindViewerScreen.inside(mx, my, h.rebindX, h.rebindY, BTN_REBIND_W, h.btnH)) {
                 listenMapping = h.mapping;
@@ -206,7 +211,6 @@ final class KeybindQuickEditPopover {
             }
         }
 
-        // Click outside the card closes the popover; click inside the card is consumed but no-op.
         if (KeybindViewerScreen.inside(mx, my, cardX, cardY, cardW, cardH)) return true;
         close();
         return true;
@@ -226,24 +230,23 @@ final class KeybindQuickEditPopover {
             close();
             return true;
         }
-        // Swallow other keys while modal is open so they don't fall through to viewer search etc.
         return true;
     }
 
     boolean mouseScrolled(double mx, double my, double delta) {
-        return open;  // swallow scroll while modal is open
+        return open;
     }
 
     private void applyKey(InputConstants.Key key) {
         if (listenMapping == null) return;
         Minecraft mc = Minecraft.getInstance();
-        String prev = listenMapping.getTranslatedKeyMessage().getString();
         String action = Component.translatable(listenMapping.getName()).getString();
         mc.options.setKey(listenMapping, key);
         KeybindPriorityEnforcer.resetAndEnforce();
         mc.options.save();
         listenMapping = null;
         if (onMutation != null) onMutation.run();
+        invalidateMappings();
         noticeSink.accept(Component.translatable("screen.newvisualkeybing.viewer.rebound",
                 action, key.getDisplayName().getString()).getString());
     }
@@ -255,29 +258,36 @@ final class KeybindQuickEditPopover {
         KeybindPriorityEnforcer.resetAndEnforce();
         mc.options.save();
         if (onMutation != null) onMutation.run();
+        invalidateMappings();
         noticeSink.accept(Component.translatable("screen.newvisualkeybing.viewer.notice.unbind_one",
                 action).getString());
-        // If that was the last binding on this key, close the popover.
         if (collectMappings().isEmpty()) close();
     }
 
-    /** Find every KeyMapping currently bound to the popover's virtual key. */
     private List<KeyMapping> collectMappings() {
-        List<KeyMapping> out = new ArrayList<>();
+        long version = scanner.version();
+        if (cachedMappingsVirtualKey == virtualKey && cachedMappingsVersion == version) return cachedMappings;
+        cachedMappings.clear();
+        cachedMappingsVirtualKey = virtualKey;
+        cachedMappingsVersion = version;
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.options == null) return out;
+        if (mc == null || mc.options == null) return cachedMappings;
         boolean wantMouse = KeyboardLayoutData.isMouse(virtualKey);
         int mouseBtn = wantMouse ? KeyboardLayoutData.virtualToMouseBtn(virtualKey) : -1;
         for (KeyMapping km : mc.options.keyMappings) {
             InputConstants.Key kmKey = ((KeyMappingAccessor) (Object) km).newvisualkeybing$getKey();
             if (kmKey == InputConstants.UNKNOWN) continue;
             if (wantMouse) {
-                if (kmKey.getType() == InputConstants.Type.MOUSE && kmKey.getValue() == mouseBtn) out.add(km);
+                if (kmKey.getType() == InputConstants.Type.MOUSE && kmKey.getValue() == mouseBtn) cachedMappings.add(km);
             } else {
-                if (kmKey.getType() != InputConstants.Type.MOUSE && kmKey.getValue() == virtualKey) out.add(km);
+                if (kmKey.getType() != InputConstants.Type.MOUSE && kmKey.getValue() == virtualKey) cachedMappings.add(km);
             }
         }
-        return out;
+        return cachedMappings;
+    }
+
+    private void invalidateMappings() {
+        cachedMappingsVersion = Long.MIN_VALUE;
     }
 
     private static void renderXButton(GuiGraphics g, int x, int y, int size,

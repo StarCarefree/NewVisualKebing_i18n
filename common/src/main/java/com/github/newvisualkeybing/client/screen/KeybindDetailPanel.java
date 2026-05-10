@@ -12,6 +12,7 @@ import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
 
 
@@ -38,8 +39,17 @@ final class KeybindDetailPanel {
     private int actionBtnW;
     private final List<RowHit> rowHits = new ArrayList<>();
     private final List<PriorityHit> priorityHits = new ArrayList<>();
+    private final EnumMap<KeyBindingScanner.KeyStatus, String> statusLabels =
+            new EnumMap<>(KeyBindingScanner.KeyStatus.class);
     private int[] rowHeights = new int[0];
     private boolean[] doubleLineRows = new boolean[0];
+    private String detailsTitle;
+    private String hoverHint;
+    private String wheelHint;
+    private String unboundText;
+    private String modifyLabel;
+    private String unbindLabel;
+    private boolean textCacheReady;
 
     record RowHit(int x, int y, int w, int h, KeyBindingScanner.KeyBindingInfo info) {}
     record PriorityHit(int x, int y, int w, int h, int delta, KeyBindingScanner.KeyBindingInfo info) {}
@@ -82,13 +92,13 @@ final class KeybindDetailPanel {
 
     void render(GuiGraphics g, Font font, int x, int y, int w, int h,
                 Integer virtualKey, int mouseX, int mouseY) {
+        ensureTextCache();
         modifyX = modifyY = unbindX = unbindY = -1;
         rowHits.clear();
         priorityHits.clear();
 
         var c = UITheme.colors();
-        int contentY = KeybindViewerScreen.paintPanelBase(g, font, x, y, w, h,
-                Component.translatable("screen.newvisualkeybing.viewer.details").getString());
+        int contentY = KeybindViewerScreen.paintPanelBase(g, font, x, y, w, h, detailsTitle);
 
         int innerX = x + PANEL_PAD;
         int innerW = w - PANEL_PAD * 2;
@@ -101,9 +111,7 @@ final class KeybindDetailPanel {
                     UITheme.lerpColor(c.widgetBg(), c.panelBg(), 0.45f));
             UITheme.drawRoundedBorder(g, innerX, boxY, innerW, boxH, 6,
                     UITheme.withAlpha(c.widgetBorder(), 0x90));
-            String hint = KeybindViewerScreen.fitToWidth(font,
-                    Component.translatable("screen.newvisualkeybing.viewer.hover_hint").getString(),
-                    innerW - 16);
+            String hint = KeybindViewerScreen.fitToWidth(font, hoverHint, innerW - 16);
             g.drawString(font, hint, innerX + 8, boxY + (boxH - font.lineHeight) / 2, c.textMuted(), false);
             return;
         }
@@ -142,7 +150,7 @@ final class KeybindDetailPanel {
         if (!bindings.isEmpty()) {
             String catText = bindings.get(0).categoryName();
             if (bindings.size() > 1) {
-                long distinct = bindings.stream().map(KeyBindingScanner.KeyBindingInfo::categoryName).distinct().count();
+                int distinct = countDistinctCategories(bindings);
                 if (distinct > 1) catText = catText + "  +" + (distinct - 1);
             }
             String catFit = KeybindViewerScreen.fitToWidth(font, catText, innerW);
@@ -162,13 +170,9 @@ final class KeybindDetailPanel {
         int listBottom = actionY - 4;
 
         if (isWheel) {
-            renderInfoBox(g, font, innerX, lineY, innerW,
-                    Component.translatable("screen.newvisualkeybing.viewer.wheel_hint").getString(),
-                    c.textMuted());
+            renderInfoBox(g, font, innerX, lineY, innerW, wheelHint, c.textMuted());
         } else if (bindings.isEmpty()) {
-            renderInfoBox(g, font, innerX, lineY, innerW,
-                    Component.translatable("screen.newvisualkeybing.viewer.unbound").getString(),
-                    c.textMuted());
+            renderInfoBox(g, font, innerX, lineY, innerW, unboundText, c.textMuted());
         } else {
             renderBindingList(g, font, innerX, lineY, innerW, listBottom - lineY, bindings, mouseX, mouseY);
         }
@@ -179,15 +183,27 @@ final class KeybindDetailPanel {
             modifyX = innerX;
             modifyY = actionY;
             KeybindViewerScreen.renderActionButton(g, font, modifyX, modifyY, btnW, ACTION_BTN_H,
-                    Component.translatable("screen.newvisualkeybing.viewer.modify").getString(),
-                    c.accent(), KeybindViewerScreen.inside(mouseX, mouseY, modifyX, modifyY, btnW, ACTION_BTN_H));
+                    modifyLabel, c.accent(), KeybindViewerScreen.inside(mouseX, mouseY, modifyX, modifyY, btnW, ACTION_BTN_H));
 
             unbindX = innerX + btnW + ACTION_BTN_GAP;
             unbindY = actionY;
             KeybindViewerScreen.renderActionButton(g, font, unbindX, unbindY, btnW, ACTION_BTN_H,
-                    Component.translatable("screen.newvisualkeybing.viewer.unbind").getString(),
-                    c.danger(), KeybindViewerScreen.inside(mouseX, mouseY, unbindX, unbindY, btnW, ACTION_BTN_H));
+                    unbindLabel, c.danger(), KeybindViewerScreen.inside(mouseX, mouseY, unbindX, unbindY, btnW, ACTION_BTN_H));
         }
+    }
+
+    private void ensureTextCache() {
+        if (textCacheReady) return;
+        detailsTitle = Component.translatable("screen.newvisualkeybing.viewer.details").getString();
+        hoverHint = Component.translatable("screen.newvisualkeybing.viewer.hover_hint").getString();
+        wheelHint = Component.translatable("screen.newvisualkeybing.viewer.wheel_hint").getString();
+        unboundText = Component.translatable("screen.newvisualkeybing.viewer.unbound").getString();
+        modifyLabel = Component.translatable("screen.newvisualkeybing.viewer.modify").getString();
+        unbindLabel = Component.translatable("screen.newvisualkeybing.viewer.unbind").getString();
+        for (KeyBindingScanner.KeyStatus status : KeyBindingScanner.KeyStatus.values()) {
+            statusLabels.put(status, Component.translatable(statusTranslation(status)).getString());
+        }
+        textCacheReady = true;
     }
 
     private static void renderInfoBox(GuiGraphics g, Font font, int x, int y, int w, String text, int textColor) {
@@ -199,7 +215,7 @@ final class KeybindDetailPanel {
         g.drawString(font, fit, x + 8, y + (h - font.lineHeight) / 2, textColor, false);
     }
 
-    private static int renderStatusChip(GuiGraphics g, Font font, int x, int y, KeyBindingScanner.KeyStatus status, boolean measureOnly) {
+    private int renderStatusChip(GuiGraphics g, Font font, int x, int y, KeyBindingScanner.KeyStatus status, boolean measureOnly) {
         var c = UITheme.colors();
         int dot;
         int textColor;
@@ -210,7 +226,7 @@ final class KeybindDetailPanel {
             case CONFLICT -> { dot = c.danger(); textColor = c.danger(); }
             default -> { dot = c.widgetBorder(); textColor = c.textSecondary(); }
         }
-        String label = Component.translatable(statusTranslation(status)).getString();
+        String label = statusLabels.get(status);
         int chipH = 12;
         int chipW = font.width(label) + 16;
         if (measureOnly) return chipW;
