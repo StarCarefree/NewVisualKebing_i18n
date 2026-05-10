@@ -53,7 +53,7 @@ public class KeybindViewerScreen extends Screen {
             profileStore, this::onProfileMutation, this::showNotice);
     private final KeybindKeyboardRenderer keyboardRenderer = new KeybindKeyboardRenderer(scanner);
     private final KeybindMouseRenderer mouseRenderer = new KeybindMouseRenderer(scanner);
-    private final KeybindDetailPanel detailPanel = new KeybindDetailPanel(scanner);
+    private final KeybindDetailPanel detailPanel = new KeybindDetailPanel(scanner, profileStore);
     private final KeybindQuickEditPopover quickEdit = new KeybindQuickEditPopover(scanner, this::showNotice, this::onPriorityMutation);
 
     private EditBox searchBox;
@@ -604,10 +604,12 @@ public class KeybindViewerScreen extends Screen {
 
     private Component layoutLabel(KeyboardLayoutData.Style style) {
         return switch (style) {
-            case ANSI_104   -> Component.translatable("screen.newvisualkeybing.viewer.layout.ansi_104");
-            case KEYS_98    -> Component.translatable("screen.newvisualkeybing.viewer.layout.keys_98");
-            case TKL_87     -> Component.translatable("screen.newvisualkeybing.viewer.layout.tkl_87");
-            case COMPACT_60 -> Component.translatable("screen.newvisualkeybing.viewer.layout.compact_60");
+            case ANSI_104    -> Component.translatable("screen.newvisualkeybing.viewer.layout.ansi_104");
+            case KEYS_98     -> Component.translatable("screen.newvisualkeybing.viewer.layout.keys_98");
+            case TKL_87      -> Component.translatable("screen.newvisualkeybing.viewer.layout.tkl_87");
+            case COMPACT_60  -> Component.translatable("screen.newvisualkeybing.viewer.layout.compact_60");
+            case MAC_FULL    -> Component.translatable("screen.newvisualkeybing.viewer.layout.mac_full");
+            case MAC_COMPACT -> Component.translatable("screen.newvisualkeybing.viewer.layout.mac_compact");
         };
     }
 
@@ -715,6 +717,19 @@ public class KeybindViewerScreen extends Screen {
         refreshFilters();
         showNotice(Component.translatable("screen.newvisualkeybing.viewer.notice.unbind_one",
                 info.actionName()).getString());
+    }
+
+    private void changeMappingPriority(KeyBindingScanner.KeyBindingInfo info, int delta) {
+        net.minecraft.client.KeyMapping target = null;
+        for (net.minecraft.client.KeyMapping km : minecraft.options.keyMappings) {
+            if (km.getName().equals(info.translationKey())) { target = km; break; }
+        }
+        if (target == null) return;
+        profileStore.changePriority(target, delta);
+        scanner.scan();
+        refreshFilters();
+        showNotice(Component.translatable("screen.newvisualkeybing.viewer.priority.changed",
+                info.actionName(), profileStore.priorityOf(target)).getString());
     }
 
     private void invalidateLayoutCache() {
@@ -918,6 +933,11 @@ public class KeybindViewerScreen extends Screen {
 
         boolean wheelSelected = selectedVirtualKey != null && KeyboardLayoutData.isWheel(selectedVirtualKey);
         if (selectedVirtualKey != null && !wheelSelected) {
+            KeybindDetailPanel.PriorityHit priorityHit = detailPanel.getRowPriorityHit(mouseX, mouseY);
+            if (priorityHit != null) {
+                changeMappingPriority(priorityHit.info(), priorityHit.delta());
+                return true;
+            }
             KeyBindingScanner.KeyBindingInfo rowInfo = detailPanel.getRowUnbindHit(mouseX, mouseY);
             if (rowInfo != null) {
                 unbindSingleMapping(rowInfo);

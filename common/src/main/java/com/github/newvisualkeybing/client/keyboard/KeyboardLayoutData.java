@@ -19,10 +19,12 @@ public final class KeyboardLayoutData {
 
     
     public enum Style {
-        ANSI_104("ANSI 104", 22.50f, 6.10f),
-        KEYS_98("98 Keys",   21.50f, 6.10f),
-        TKL_87("TKL 87",     18.25f, 6.10f),
-        COMPACT_60("60%",    15.00f, 5.10f);
+        ANSI_104("ANSI 104",       22.50f, 6.10f),
+        KEYS_98("98 Keys",         21.50f, 6.10f),
+        TKL_87("TKL 87",           18.25f, 6.10f),
+        COMPACT_60("60%",          15.00f, 5.10f),
+        MAC_FULL("Mac Full",       21.50f, 6.10f),
+        MAC_COMPACT("Mac Compact", 15.25f, 6.10f);
 
         private final String label;
         private final float widthU;
@@ -168,6 +170,8 @@ public final class KeyboardLayoutData {
         LAYOUTS.put(Style.KEYS_98,    Collections.unmodifiableList(build98()));
         LAYOUTS.put(Style.TKL_87,     Collections.unmodifiableList(buildTkl87()));
         LAYOUTS.put(Style.COMPACT_60, Collections.unmodifiableList(buildCompact60()));
+        LAYOUTS.put(Style.MAC_FULL,    Collections.unmodifiableList(buildMacFull()));
+        LAYOUTS.put(Style.MAC_COMPACT, Collections.unmodifiableList(buildMacCompact()));
         KEYS = LAYOUTS.get(Style.ANSI_104);
     }
 
@@ -432,6 +436,203 @@ public final class KeyboardLayoutData {
         keys.add(kd(GLFW.GLFW_KEY_RIGHT,         "\u2192",    null, 15.00f, 5.10f, 1.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_0,          "0",    null, 17.50f, 5.10f, 2.00f, 1.0f));
         keys.add(kd(GLFW.GLFW_KEY_KP_DECIMAL,    ".",    null, 19.50f, 5.10f, 1.00f, 1.0f));
+
+        return keys;
+    }
+
+    private static List<KeyDef> buildMacFull() {
+        List<KeyDef> keys = new ArrayList<>();
+
+        keys.add(kd(GLFW.GLFW_KEY_ESCAPE,        "esc",  null,  0.00f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F1,            "F1",   null,  1.50f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F2,            "F2",   null,  2.50f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F3,            "F3",   null,  3.50f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F4,            "F4",   null,  4.50f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F5,            "F5",   null,  5.75f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F6,            "F6",   null,  6.75f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F7,            "F7",   null,  7.75f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F8,            "F8",   null,  8.75f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F9,            "F9",   null, 10.00f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F10,           "F10",  null, 11.00f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F11,           "F11",  null, 12.00f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F12,           "F12",  null, 13.00f, 0.00f, 1.00f, 1.0f));
+
+        keys.add(kd(GLFW.GLFW_KEY_GRAVE_ACCENT,  "`",    "~",   0.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_1,             "1",    "!",   1.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_2,             "2",    "@",   2.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_3,             "3",    "#",   3.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_4,             "4",    "$",   4.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_5,             "5",    "%",   5.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_6,             "6",    "^",   6.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_7,             "7",    "&",   7.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_8,             "8",    "*",   8.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_9,             "9",    "(",   9.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_0,             "0",    ")",  10.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_MINUS,         "-",    "_",  11.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_EQUAL,         "=",    "+",  12.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_BACKSPACE,     "delete", null, 13.00f, 1.10f, 2.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_HOME,          "Home", null, 15.25f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_PAGE_UP,       "PgUp", null, 16.25f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_NUM_LOCK,      "Clr",  null, 17.25f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_EQUAL,      "=",    null, 18.50f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_DIVIDE,     "/",    null, 19.50f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_MULTIPLY,   "*",    null, 20.50f, 1.10f, 1.00f, 1.0f));
+
+        keys.add(kd(GLFW.GLFW_KEY_TAB,           "tab",  null,  0.00f, 2.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_Q,             "Q",    null,  1.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_W,             "W",    null,  2.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_E,             "E",    null,  3.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_R,             "R",    null,  4.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_T,             "T",    null,  5.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_Y,             "Y",    null,  6.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_U,             "U",    null,  7.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_I,             "I",    null,  8.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_O,             "O",    null,  9.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_P,             "P",    null, 10.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_BRACKET,  "[",    "{",  11.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_BRACKET, "]",    "}",  12.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_BACKSLASH,     "\\",   "|",  13.50f, 2.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_DELETE,        "⌦", null, 15.25f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_END,           "End",  null, 16.25f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_PAGE_DOWN,     "PgDn", null, 17.25f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_7,          "7",    null, 18.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_8,          "8",    null, 19.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_9,          "9",    null, 20.50f, 2.10f, 1.00f, 1.0f));
+
+        keys.add(kd(GLFW.GLFW_KEY_CAPS_LOCK,     "caps lock", null, 0.00f, 3.10f, 1.75f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_A,             "A",    null,  1.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_S,             "S",    null,  2.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_D,             "D",    null,  3.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F,             "F",    null,  4.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_G,             "G",    null,  5.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_H,             "H",    null,  6.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_J,             "J",    null,  7.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_K,             "K",    null,  8.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_L,             "L",    null,  9.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_SEMICOLON,     ";",    ":",  10.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_APOSTROPHE,    "'",    "\"", 11.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_ENTER,         "return", null, 12.75f, 3.10f, 2.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_4,          "4",    null, 18.50f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_5,          "5",    null, 19.50f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_6,          "6",    null, 20.50f, 3.10f, 1.00f, 1.0f));
+
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_SHIFT,    "⇧ shift", null, 0.00f, 4.10f, 2.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_Z,             "Z",    null,  2.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_X,             "X",    null,  3.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_C,             "C",    null,  4.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_V,             "V",    null,  5.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_B,             "B",    null,  6.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_N,             "N",    null,  7.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_M,             "M",    null,  8.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_COMMA,         ",",    "<",   9.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_PERIOD,        ".",    ">",  10.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_SLASH,         "/",    "?",  11.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SHIFT,   "⇧ shift", null, 12.25f, 4.10f, 2.75f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_UP,            "↑", null, 16.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_1,          "1",    null, 18.50f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_2,          "2",    null, 19.50f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_3,          "3",    null, 20.50f, 4.10f, 1.00f, 1.0f));
+
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_CONTROL,  "⌃ ctrl",   null,  0.00f, 5.10f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_ALT,      "⌥ option", null,  1.25f, 5.10f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_SUPER,    "⌘ cmd",    null,  2.50f, 5.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_SPACE,         "",         null,  4.00f, 5.10f, 6.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SUPER,   "⌘ cmd",    null, 10.00f, 5.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_ALT,     "⌥ option", null, 11.50f, 5.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_CONTROL, "⌃ ctrl",   null, 13.00f, 5.10f, 2.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT,          "←",        null, 15.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_DOWN,          "↓",        null, 16.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT,         "→",        null, 17.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_0,          "0",        null, 18.50f, 5.10f, 2.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_KP_DECIMAL,    ".",        null, 20.50f, 5.10f, 1.00f, 1.0f));
+
+        return keys;
+    }
+
+    private static List<KeyDef> buildMacCompact() {
+        List<KeyDef> keys = new ArrayList<>();
+
+        keys.add(kd(GLFW.GLFW_KEY_ESCAPE, "esc",  null,  0.00f, 0.00f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F1,     "F1",   null,  1.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F2,     "F2",   null,  2.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F3,     "F3",   null,  3.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F4,     "F4",   null,  4.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F5,     "F5",   null,  5.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F6,     "F6",   null,  6.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F7,     "F7",   null,  7.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F8,     "F8",   null,  8.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F9,     "F9",   null,  9.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F10,    "F10",  null, 10.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F11,    "F11",  null, 11.25f, 0.00f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F12,    "F12",  null, 12.25f, 0.00f, 1.00f, 1.0f));
+
+        keys.add(kd(GLFW.GLFW_KEY_GRAVE_ACCENT,  "`",    "~",   0.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_1,             "1",    "!",   1.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_2,             "2",    "@",   2.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_3,             "3",    "#",   3.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_4,             "4",    "$",   4.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_5,             "5",    "%",   5.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_6,             "6",    "^",   6.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_7,             "7",    "&",   7.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_8,             "8",    "*",   8.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_9,             "9",    "(",   9.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_0,             "0",    ")",  10.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_MINUS,         "-",    "_",  11.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_EQUAL,         "=",    "+",  12.00f, 1.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_BACKSPACE,     "delete", null, 13.00f, 1.10f, 2.25f, 1.0f));
+
+        keys.add(kd(GLFW.GLFW_KEY_TAB,           "tab",  null,  0.00f, 2.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_Q,             "Q",    null,  1.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_W,             "W",    null,  2.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_E,             "E",    null,  3.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_R,             "R",    null,  4.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_T,             "T",    null,  5.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_Y,             "Y",    null,  6.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_U,             "U",    null,  7.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_I,             "I",    null,  8.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_O,             "O",    null,  9.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_P,             "P",    null, 10.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_BRACKET,  "[",    "{",  11.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_BRACKET, "]",    "}",  12.50f, 2.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_BACKSLASH,     "\\",   "|",  13.50f, 2.10f, 1.75f, 1.0f));
+
+        keys.add(kd(GLFW.GLFW_KEY_CAPS_LOCK,     "caps lock", null, 0.00f, 3.10f, 1.75f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_A,             "A",    null,  1.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_S,             "S",    null,  2.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_D,             "D",    null,  3.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_F,             "F",    null,  4.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_G,             "G",    null,  5.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_H,             "H",    null,  6.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_J,             "J",    null,  7.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_K,             "K",    null,  8.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_L,             "L",    null,  9.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_SEMICOLON,     ";",    ":",  10.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_APOSTROPHE,    "'",    "\"", 11.75f, 3.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_ENTER,         "return", null, 12.75f, 3.10f, 2.50f, 1.0f));
+
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_SHIFT,    "⇧ shift", null, 0.00f, 4.10f, 2.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_Z,             "Z",    null,  2.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_X,             "X",    null,  3.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_C,             "C",    null,  4.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_V,             "V",    null,  5.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_B,             "B",    null,  6.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_N,             "N",    null,  7.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_M,             "M",    null,  8.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_COMMA,         ",",    "<",   9.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_PERIOD,        ".",    ">",  10.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_SLASH,         "/",    "?",  11.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SHIFT,   "⇧ shift", null, 12.25f, 4.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_UP,            "↑",       null, 13.25f, 4.10f, 1.00f, 1.0f));
+
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_CONTROL,  "⌃ ctrl",   null, 0.00f, 5.10f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_ALT,      "⌥ option", null, 1.25f, 5.10f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT_SUPER,    "⌘ cmd",    null, 2.50f, 5.10f, 1.25f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_SPACE,         "",         null, 3.75f, 5.10f, 5.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_SUPER,   "⌘ cmd",    null, 9.25f, 5.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT_ALT,     "⌥ option", null, 10.75f, 5.10f, 1.50f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_LEFT,          "←",        null, 12.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_DOWN,          "↓",        null, 13.25f, 5.10f, 1.00f, 1.0f));
+        keys.add(kd(GLFW.GLFW_KEY_RIGHT,         "→",        null, 14.25f, 5.10f, 1.00f, 1.0f));
 
         return keys;
     }

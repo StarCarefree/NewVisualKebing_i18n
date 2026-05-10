@@ -42,6 +42,8 @@ final class KeybindMouseRenderer {
     private int cachedBodyW = Integer.MIN_VALUE;
     private int cachedBodyH = Integer.MIN_VALUE;
     private float cachedMouseScale = Float.NaN;
+    private final int[] labelWidths = new int[KeyboardLayoutData.MOUSE_KEYS.size()];
+    private Font cachedLabelFont;
 
     KeybindMouseRenderer(KeyBindingScanner scanner) {
         this.scanner = scanner;
@@ -62,6 +64,7 @@ final class KeybindMouseRenderer {
 
         KeybindViewerScreen.paintPanelBase(g, font, x, y, w, h,
                 Component.translatable("screen.newvisualkeybing.viewer.mouse").getString());
+        ensureLabelWidths(font);
 
         int innerTop = y + PANEL_CONTENT_TOP;
         int innerBottom = y + h - PANEL_PAD;
@@ -147,7 +150,7 @@ final class KeybindMouseRenderer {
                         : UITheme.withAlpha(c.textMuted(), 0x80);
                 String label = key.label();
                 g.drawString(font, label,
-                        b.x + (b.w - font.width(label)) / 2,
+                        b.x + (b.w - labelWidths[i]) / 2,
                         b.y + (b.h - font.lineHeight) / 2,
                         textColor, false);
             }
@@ -271,6 +274,14 @@ final class KeybindMouseRenderer {
         bounds[7] = new Rect(rightSideX, rightSideY + (SIDE_H + SIDE_GAP) * 2, SIDE_W, SIDE_H);
         bounds[8] = new Rect(wheelX + 1, wheelY + 1, WHEEL_COL_W - 2, wheelTickH - 2);
         bounds[9] = new Rect(wheelX + 1, wheelY + wheelTickH + mmbH + 1, WHEEL_COL_W - 2, wheelTickH - 2);
+    }
+
+    private void ensureLabelWidths(Font font) {
+        if (font == cachedLabelFont) return;
+        cachedLabelFont = font;
+        for (int i = 0; i < KeyboardLayoutData.MOUSE_KEYS.size(); i++) {
+            labelWidths[i] = font.width(KeyboardLayoutData.MOUSE_KEYS.get(i).label());
+        }
     }
 
     private record Rect(int x, int y, int w, int h) {}

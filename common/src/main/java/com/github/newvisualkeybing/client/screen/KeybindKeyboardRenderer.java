@@ -16,6 +16,11 @@ import java.util.function.IntPredicate;
 final class KeybindKeyboardRenderer {
 
     private final KeyBindingScanner scanner;
+    private KeyboardLayoutData.Style cachedStyle;
+    private int cachedKeyboardX = Integer.MIN_VALUE;
+    private int cachedKeyboardY = Integer.MIN_VALUE;
+    private float cachedKeyScale = Float.NaN;
+    private KeyDrawState[] drawStates = new KeyDrawState[0];
 
     KeybindKeyboardRenderer(KeyBindingScanner scanner) {
         this.scanner = scanner;
@@ -31,80 +36,123 @@ final class KeybindKeyboardRenderer {
                    int mouseX, int mouseY, float animTick) {
         var c = UITheme.colors();
         renderChassis(g, style, keyboardX, keyboardY, keyScale);
+        refreshDrawStates(font, style, keyboardX, keyboardY, keyScale);
 
+        long scannerVersion = scanner.version();
         Integer hovered = null;
-        for (KeyboardLayoutData.KeyDef key : KeyboardLayoutData.getKeys(style)) {
-            int x = key.screenX(keyboardX, keyScale);
-            int y = key.screenY(keyboardY, keyScale);
-            int w = key.screenW(keyScale);
-            int h = key.screenH(keyScale);
+        for (KeyDrawState state : drawStates) {
+            state.matched = isVisibleKey.test(state.glfwKey);
+            state.hidden = isHiddenKey.test(state.glfwKey);
+            state.hover = !state.hidden && KeybindViewerScreen.inside(mouseX, mouseY, state.x, state.y, state.w, state.h);
+            state.selected = selectedVirtualKey != null && selectedVirtualKey == state.glfwKey;
+            if (state.cachedDataVersion != scannerVersion) {
+                state.cachedDataVersion = scannerVersion;
+                state.status = scanner.getStatus(state.glfwKey);
+                state.bindingCount = scanner.getBindingCount(state.glfwKey);
+                state.cachedBindings = scanner.getBindings(state.glfwKey);
+                state.cachedInlineMaxW = Integer.MIN_VALUE;
+            }
+            if (state.hover) hovered = state.glfwKey;
+            renderKeyShape(g, state, c, animTick);
+        }
 
-            boolean matched = isVisibleKey.test(key.glfwKey());
-            boolean hidden = isHiddenKey.test(key.glfwKey());
-            boolean hover = KeybindViewerScreen.inside(mouseX, mouseY, x, y, w, h);
-            boolean selected = selectedVirtualKey != null && selectedVirtualKey == key.glfwKey();
-            if (hidden) hover = false;
-            if (hover) hovered = key.glfwKey();
-
-            KeyBindingScanner.KeyStatus status = scanner.getStatus(key.glfwKey());
-            int radius = w >= 34 || h >= 34 ? 4 : 3;
-            int bindingCount = scanner.getBindingCount(key.glfwKey());
-
-            if (matched && !hidden) {
-                int haloColor = selected ? UITheme.withAlpha(KeybindViewerScreen.pulseAccent(animTick), 0x70)
-                        : hover ? UITheme.withAlpha(c.accentAlt(), 0x55) : 0;
-                if (haloColor != 0) {
-                    UITheme.fillRoundedRect(g, x - 1, y - 1, w + 2, h + 1, radius + 1, haloColor);
-                }
-
-                int topFill = applyZoneTint(KeybindViewerScreen.keyStatusColor(status), key.glfwKey(), status);
-                int faceH = h - 1;
-
-                int shadow = UITheme.lerpColor(topFill, 0x000000, 0.50f);
-                UITheme.fillRoundedRect(g, x, y + 1, w, h, radius, shadow);
-
-                UITheme.fillRoundedRect(g, x, y, w, faceH, radius, topFill);
-
-                int half = faceH / 2;
-                int hlAlpha = hover ? 0x18 : 0x10;
-                g.fill(x + 1, y + 1, x + w - 1, y + half, UITheme.withAlpha(0xFFFFFF, hlAlpha));
-                g.fill(x + 1, y + faceH - 1, x + w - 1, y + faceH, UITheme.withAlpha(0x000000, 0x18));
-                g.fill(x + radius, y, x + w - radius, y + 1, UITheme.withAlpha(0xFFFFFF, 0x30));
-                renderStatusEdge(g, x, y, w, faceH, radius, status, hover || selected);
-
-                int borderColor = selected ? KeybindViewerScreen.pulseAccent(animTick)
-                        : hover ? c.accentAlt()
-                        : status == KeyBindingScanner.KeyStatus.CONFLICT
-                            ? UITheme.lerpColor(c.danger(), c.widgetBorder(), 0.30f)
-                            : c.widgetBorder();
-                UITheme.drawRoundedBorder(g, x, y, w, faceH, radius, borderColor);
-
-                renderKeyLabels(g, font, key, x, y, w, h, KeybindViewerScreen.labelColorForStatus(status), true);
-                renderInlineBindings(g, font, key.glfwKey(), x, y, w, h);
-                renderBindingBadge(g, font, x, y, w, h, bindingCount, status);
-            } else {
-                int ghostFill = KeybindViewerScreen.keyStatusColor(status, false);
-                if (hidden) ghostFill = UITheme.withAlpha(c.widgetBg(), 0x24);
-                UITheme.fillRoundedRect(g, x, y, w, h - 1, radius, ghostFill);
-                if (!hidden && status != KeyBindingScanner.KeyStatus.FREE) {
-                    renderStatusEdge(g, x, y, w, h - 1, radius, status, false);
-                }
-                UITheme.drawRoundedBorder(g, x, y, w, h - 1, radius,
-                        UITheme.withAlpha(c.widgetBorder(), hidden ? 0x28 : 0x60));
-                if (!hidden) {
-                    renderKeyLabels(g, font, key, x, y, w, h,
-                            UITheme.withAlpha(c.textMuted(), 0x80), false);
-                }
+        for (KeyDrawState state : drawStates) {
+            if (state.matched && !state.hidden) {
+                renderKeyLabels(g, font, state, KeybindViewerScreen.labelColorForStatus(state.status), true);
+                renderInlineBindings(g, font, state);
+                renderBindingBadge(g, font, state.x, state.y, state.w, state.h, state.bindingCount, state.status);
+            } else if (!state.hidden) {
+                renderKeyLabels(g, font, state, UITheme.withAlpha(c.textMuted(), 0x80), false);
             }
         }
         return hovered;
     }
 
+    private void refreshDrawStates(Font font, KeyboardLayoutData.Style style,
+                                   int keyboardX, int keyboardY, float keyScale) {
+        if (style == cachedStyle && keyboardX == cachedKeyboardX && keyboardY == cachedKeyboardY
+                && Float.compare(keyScale, cachedKeyScale) == 0) {
+            return;
+        }
+        cachedStyle = style;
+        cachedKeyboardX = keyboardX;
+        cachedKeyboardY = keyboardY;
+        cachedKeyScale = keyScale;
+        List<KeyboardLayoutData.KeyDef> keys = KeyboardLayoutData.getKeys(style);
+        if (drawStates.length != keys.size()) {
+            drawStates = new KeyDrawState[keys.size()];
+            for (int i = 0; i < drawStates.length; i++) drawStates[i] = new KeyDrawState();
+        }
+        for (int i = 0; i < keys.size(); i++) {
+            KeyboardLayoutData.KeyDef key = keys.get(i);
+            KeyDrawState state = drawStates[i];
+            state.key = key;
+            state.glfwKey = key.glfwKey();
+            state.zone = KeyboardLayoutData.zoneOf(state.glfwKey);
+            state.x = key.screenX(keyboardX, keyScale);
+            state.y = key.screenY(keyboardY, keyScale);
+            state.w = key.screenW(keyScale);
+            state.h = key.screenH(keyScale);
+            state.radius = state.w >= 34 || state.h >= 34 ? 4 : 3;
+            int labelMaxW = Math.max(0, state.w - 4);
+            state.mainLabel = KeybindViewerScreen.fitToWidth(font, key.label(), labelMaxW);
+            state.mainLabelW = font.width(state.mainLabel);
+            state.subLabel = key.subLabel() == null ? null : KeybindViewerScreen.fitToWidth(font, key.subLabel(), labelMaxW);
+            state.subLabelW = state.subLabel == null ? 0 : font.width(state.subLabel);
+            state.cachedInlineMaxW = Integer.MIN_VALUE;
+        }
+    }
+
+    private static void renderKeyShape(GuiGraphics g, KeyDrawState state,
+                                       UITheme.ColorPalette c, float animTick) {
+        int x = state.x;
+        int y = state.y;
+        int w = state.w;
+        int h = state.h;
+        int radius = state.radius;
+        if (state.matched && !state.hidden) {
+            int haloColor = state.selected ? UITheme.withAlpha(KeybindViewerScreen.pulseAccent(animTick), 0x70)
+                    : state.hover ? UITheme.withAlpha(c.accentAlt(), 0x55) : 0;
+            if (haloColor != 0) {
+                UITheme.fillRoundedRect(g, x - 1, y - 1, w + 2, h + 1, radius + 1, haloColor);
+            }
+
+            int topFill = applyZoneTint(KeybindViewerScreen.keyStatusColor(state.status), state.zone, state.status);
+            int faceH = h - 1;
+
+            int shadow = UITheme.lerpColor(topFill, 0x000000, 0.50f);
+            UITheme.fillRoundedRect(g, x, y + 1, w, h, radius, shadow);
+            UITheme.fillRoundedRect(g, x, y, w, faceH, radius, topFill);
+
+            int half = faceH / 2;
+            int hlAlpha = state.hover ? 0x18 : 0x10;
+            g.fill(x + 1, y + 1, x + w - 1, y + half, UITheme.withAlpha(0xFFFFFF, hlAlpha));
+            g.fill(x + 1, y + faceH - 1, x + w - 1, y + faceH, UITheme.withAlpha(0x000000, 0x18));
+            g.fill(x + radius, y, x + w - radius, y + 1, UITheme.withAlpha(0xFFFFFF, 0x30));
+            renderStatusEdge(g, x, y, w, faceH, radius, state.status, state.hover || state.selected);
+
+            int borderColor = state.selected ? KeybindViewerScreen.pulseAccent(animTick)
+                    : state.hover ? c.accentAlt()
+                    : state.status == KeyBindingScanner.KeyStatus.CONFLICT
+                        ? UITheme.lerpColor(c.danger(), c.widgetBorder(), 0.30f)
+                        : c.widgetBorder();
+            UITheme.drawRoundedBorder(g, x, y, w, faceH, radius, borderColor);
+        } else {
+            int ghostFill = KeybindViewerScreen.keyStatusColor(state.status, false);
+            if (state.hidden) ghostFill = UITheme.withAlpha(c.widgetBg(), 0x24);
+            UITheme.fillRoundedRect(g, x, y, w, h - 1, radius, ghostFill);
+            if (!state.hidden && state.status != KeyBindingScanner.KeyStatus.FREE) {
+                renderStatusEdge(g, x, y, w, h - 1, radius, state.status, false);
+            }
+            UITheme.drawRoundedBorder(g, x, y, w, h - 1, radius,
+                    UITheme.withAlpha(c.widgetBorder(), state.hidden ? 0x28 : 0x60));
+        }
+    }
+
     
-    private static int applyZoneTint(int base, int glfwKey, KeyBindingScanner.KeyStatus status) {
+    private static int applyZoneTint(int base, KeyboardLayoutData.KeyZone zone, KeyBindingScanner.KeyStatus status) {
         if (status != KeyBindingScanner.KeyStatus.FREE) return base;
         var c = UITheme.colors();
-        KeyboardLayoutData.KeyZone zone = KeyboardLayoutData.zoneOf(glfwKey);
         return switch (zone) {
             case ALPHA -> base;
             case MODIFIER -> UITheme.lerpColor(base, c.panelBg(), 0.22f);
@@ -163,34 +211,45 @@ final class KeybindKeyboardRenderer {
     }
 
     
-    private static void renderKeyLabels(GuiGraphics g, Font font, KeyboardLayoutData.KeyDef key,
-                                        int x, int y, int w, int h, int labelColor, boolean showSub) {
+    private static void renderKeyLabels(GuiGraphics g, Font font, KeyDrawState state,
+                                        int labelColor, boolean showSub) {
         var c = UITheme.colors();
-        String main = KeybindViewerScreen.fitToWidth(font, key.label(), Math.max(0, w - 4));
-        String sub = key.subLabel() == null ? null : KeybindViewerScreen.fitToWidth(font, key.subLabel(), Math.max(0, w - 4));
+        int x = state.x;
+        int y = state.y;
+        int w = state.w;
+        int h = state.h;
+        String main = state.mainLabel;
+        String sub = state.subLabel;
         if (showSub && sub != null && h >= 18) {
             int subColor = UITheme.withAlpha(c.textSecondary(), 0xB0);
-            g.drawString(font, sub, x + (w - font.width(sub)) / 2, y + 3, subColor, false);
-            g.drawString(font, main, x + (w - font.width(main)) / 2,
+            g.drawString(font, sub, x + (w - state.subLabelW) / 2, y + 3, subColor, false);
+            g.drawString(font, main, x + (w - state.mainLabelW) / 2,
                     y + h - font.lineHeight - 4, labelColor, false);
         } else {
             g.drawString(font, main,
-                    x + (w - font.width(main)) / 2,
+                    x + (w - state.mainLabelW) / 2,
                     y + (h - font.lineHeight) / 2,
                     labelColor, false);
         }
     }
 
-    private void renderInlineBindings(GuiGraphics g, Font font, int glfwKey, int x, int y, int w, int h) {
+    private static void renderInlineBindings(GuiGraphics g, Font font, KeyDrawState state) {
+        int x = state.x;
+        int y = state.y;
+        int w = state.w;
+        int h = state.h;
         if (w < 34 || h < 24) return;
-        List<KeyBindingScanner.KeyBindingInfo> bindings = scanner.getBindings(glfwKey);
-        if (bindings.isEmpty()) return;
-        var c = UITheme.colors();
-        String text = bindings.get(0).modName();
+        List<KeyBindingScanner.KeyBindingInfo> bindings = state.cachedBindings;
+        if (bindings == null || bindings.isEmpty()) return;
         int maxW = w - 8;
-        text = KeybindViewerScreen.fitToWidth(font, text, maxW);
-        int textW = font.width(text);
-        int chipW = textW + 6;
+        if (state.cachedInlineMaxW != maxW) {
+            state.cachedInlineMaxW = maxW;
+            state.cachedInlineText = KeybindViewerScreen.fitToWidth(font, bindings.get(0).modName(), maxW);
+            state.cachedInlineTextW = font.width(state.cachedInlineText);
+        }
+        var c = UITheme.colors();
+        String text = state.cachedInlineText;
+        int chipW = state.cachedInlineTextW + 6;
         int chipX = x + (w - chipW) / 2;
         int chipY = y + h - font.lineHeight - 3;
         int fill = UITheme.lerpColor(c.widgetBg(), c.accent(), 0.20f);
@@ -217,5 +276,31 @@ final class KeybindKeyboardRenderer {
             int dotColor = status == KeyBindingScanner.KeyStatus.SELF ? c.accent() : c.success();
             UITheme.fillRoundedRect(g, x + w - 5, y + 3, 3, 3, 1, dotColor);
         }
+    }
+
+    private static final class KeyDrawState {
+        KeyboardLayoutData.KeyDef key;
+        int glfwKey;
+        KeyboardLayoutData.KeyZone zone;
+        int x;
+        int y;
+        int w;
+        int h;
+        int radius;
+        String mainLabel;
+        int mainLabelW;
+        String subLabel;
+        int subLabelW;
+        KeyBindingScanner.KeyStatus status;
+        int bindingCount;
+        boolean matched;
+        boolean hidden;
+        boolean hover;
+        boolean selected;
+        long cachedDataVersion = Long.MIN_VALUE;
+        List<KeyBindingScanner.KeyBindingInfo> cachedBindings;
+        String cachedInlineText;
+        int cachedInlineTextW;
+        int cachedInlineMaxW = Integer.MIN_VALUE;
     }
 }

@@ -23,6 +23,7 @@ final class KeybindProfilePanel {
     private final NoticeSink noticeSink;
     private EditBox nameBox;
     private int lastNameSelection = Integer.MIN_VALUE;
+    private boolean renaming;
 
     KeybindProfilePanel(KeybindProfileStore profileStore, Runnable rebuildEntries, NoticeSink noticeSink) {
         this.profileStore = profileStore;
@@ -45,7 +46,7 @@ final class KeybindProfilePanel {
         syncNameBox();
         UITheme.fillRoundedRect(graphics, nameX - 2, nameY - 2, WIDTH - 16, NAME_BOX_H + 4, 5, colors.inputBg());
         UITheme.drawRoundedBorder(graphics, nameX - 2, nameY - 2, WIDTH - 16, NAME_BOX_H + 4, 5,
-                nameBox.isFocused() ? colors.accent() : colors.widgetBorder());
+                renaming || nameBox.isFocused() ? colors.accent() : colors.widgetBorder());
         nameBox.render(graphics, mouseX, mouseY, 1.0f);
 
         int rowY = y + 58;
@@ -80,7 +81,9 @@ final class KeybindProfilePanel {
                 Component.translatable("screen.newvisualkeybing.viewer.profile.new").getString(),
                 colors.accentLight(), inside(mouseX, mouseY, x + 14 + halfW, buttonTop, halfW, BUTTON_H));
         renderButton(graphics, font, x + 8, buttonTop + BUTTON_H + 5, WIDTH - 16, BUTTON_H,
-                Component.translatable("screen.newvisualkeybing.viewer.profile.rename").getString(),
+                Component.translatable(renaming
+                        ? "screen.newvisualkeybing.viewer.profile.rename_confirm"
+                        : "screen.newvisualkeybing.viewer.profile.rename").getString(),
                 colors.accent(), inside(mouseX, mouseY, x + 8, buttonTop + BUTTON_H + 5, WIDTH - 16, BUTTON_H));
         renderButton(graphics, font, x + 8, buttonTop + (BUTTON_H + 5) * 2, WIDTH - 16, BUTTON_H,
                 Component.translatable("screen.newvisualkeybing.viewer.profile.apply").getString(),
@@ -101,7 +104,10 @@ final class KeybindProfilePanel {
 
         int nameX = x + 10;
         int nameY = y + 32;
-        if (nameBox != null && nameBox.mouseClicked(mouseX, mouseY, 0)) return true;
+        if (nameBox != null && nameBox.mouseClicked(mouseX, mouseY, 0)) {
+            if (profileStore.selectedProfile() != null) renaming = true;
+            return true;
+        }
         if (!inside(mouseX, mouseY, nameX - 2, nameY - 2, WIDTH - 16, NAME_BOX_H + 4) && nameBox != null) {
             nameBox.setFocused(false);
         }
@@ -111,6 +117,7 @@ final class KeybindProfilePanel {
         if (inside(mouseX, mouseY, x + 8, buttonTop, halfW, BUTTON_H)) {
             KeybindProfileStore.Profile profile = profileStore.saveCurrentProfile(nameText());
             setNameText(profile.name);
+            renaming = false;
             rebuildEntries.run();
             noticeSink.notice(Component.translatable("screen.newvisualkeybing.viewer.profile.saved", profile.name).getString());
             return true;
@@ -118,19 +125,21 @@ final class KeybindProfilePanel {
         if (inside(mouseX, mouseY, x + 14 + halfW, buttonTop, halfW, BUTTON_H)) {
             KeybindProfileStore.Profile profile = profileStore.createProfileFromCurrent(nameText());
             setNameText(profile.name);
+            renaming = false;
             rebuildEntries.run();
             noticeSink.notice(Component.translatable("screen.newvisualkeybing.viewer.profile.created", profile.name).getString());
             return true;
         }
         if (inside(mouseX, mouseY, x + 8, buttonTop + BUTTON_H + 5, WIDTH - 16, BUTTON_H)) {
-            KeybindProfileStore.Profile profile = profileStore.renameSelectedProfile(nameText());
-            if (profile != null) {
-                setNameText(profile.name);
-                rebuildEntries.run();
-                noticeSink.notice(Component.translatable("screen.newvisualkeybing.viewer.profile.renamed", profile.name).getString());
-            } else {
+            if (profileStore.selectedProfile() == null) {
                 noticeSink.notice(Component.translatable("screen.newvisualkeybing.viewer.profile.no_selection").getString());
+                return true;
             }
+            if (!renaming) {
+                beginRename();
+                return true;
+            }
+            commitRename();
             return true;
         }
         if (inside(mouseX, mouseY, x + 8, buttonTop + (BUTTON_H + 5) * 2, WIDTH - 16, BUTTON_H)) {
@@ -157,6 +166,7 @@ final class KeybindProfilePanel {
             KeybindProfileStore.Profile profile = profileStore.importLatestExport();
             if (profile != null) {
                 setNameText(profile.name);
+                renaming = false;
                 rebuildEntries.run();
                 noticeSink.notice(Component.translatable("screen.newvisualkeybing.viewer.profile.imported", profile.name).getString());
             } else {
@@ -168,6 +178,7 @@ final class KeybindProfilePanel {
             String name = profileStore.selectedProfile() == null ? "" : profileStore.selectedProfile().name;
             if (profileStore.deleteSelectedProfile()) {
                 syncNameBox(true);
+                renaming = false;
                 rebuildEntries.run();
                 noticeSink.notice(Component.translatable("screen.newvisualkeybing.viewer.profile.deleted", name).getString());
             } else {
@@ -183,6 +194,7 @@ final class KeybindProfilePanel {
             if (inside(mouseX, mouseY, x + 8, rowY, WIDTH - 16, ROW_H - 2)) {
                 profileStore.select(i);
                 setNameText(profiles.get(i).name);
+                renaming = false;
                 return true;
             }
             rowY += ROW_H;
@@ -197,24 +209,48 @@ final class KeybindProfilePanel {
     boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (nameBox == null || !nameBox.isFocused()) return false;
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            renaming = false;
+            syncNameBox(true);
             nameBox.setFocused(false);
             return true;
         }
         if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-            boolean created = profileStore.selectedProfile() == null;
-            KeybindProfileStore.Profile profile = created
-                    ? profileStore.createProfileFromCurrent(nameText())
-                    : profileStore.renameSelectedProfile(nameText());
-            if (profile != null) {
+            if (profileStore.selectedProfile() == null) {
+                KeybindProfileStore.Profile profile = profileStore.createProfileFromCurrent(nameText());
                 setNameText(profile.name);
+                renaming = false;
                 rebuildEntries.run();
-                noticeSink.notice(Component.translatable(created
-                        ? "screen.newvisualkeybing.viewer.profile.created"
-                        : "screen.newvisualkeybing.viewer.profile.renamed", profile.name).getString());
+                noticeSink.notice(Component.translatable("screen.newvisualkeybing.viewer.profile.created", profile.name).getString());
+            } else {
+                commitRename();
             }
             return true;
         }
         return nameBox.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    private void beginRename() {
+        if (nameBox == null) return;
+        KeybindProfileStore.Profile profile = profileStore.selectedProfile();
+        if (profile == null) return;
+        renaming = true;
+        nameBox.setValue(profile.name);
+        nameBox.setFocused(true);
+        nameBox.setHighlightPos(0);
+        nameBox.setCursorPosition(profile.name.length());
+    }
+
+    private void commitRename() {
+        KeybindProfileStore.Profile profile = profileStore.renameSelectedProfile(nameText());
+        if (profile == null) {
+            noticeSink.notice(Component.translatable("screen.newvisualkeybing.viewer.profile.no_selection").getString());
+            return;
+        }
+        setNameText(profile.name);
+        renaming = false;
+        if (nameBox != null) nameBox.setFocused(false);
+        rebuildEntries.run();
+        noticeSink.notice(Component.translatable("screen.newvisualkeybing.viewer.profile.renamed", profile.name).getString());
     }
 
     private int buttonTop(int y, int h) {

@@ -9,17 +9,57 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
 
 final class KeybindTooltipRenderer {
 
     private final KeyBindingScanner scanner;
 
+    private final EnumMap<KeyBindingScanner.KeyStatus, String> statusLabels =
+            new EnumMap<>(KeyBindingScanner.KeyStatus.class);
+    private final EnumMap<ConflictContext, String> contextNames =
+            new EnumMap<>(ConflictContext.class);
+    private String inputTypeKeyboard;
+    private String inputTypeMouse;
+    private String inputTypeWheel;
+    private String unboundText;
+    private String wheelHintText;
+    private String conflictWarningText;
+    private String clickHintText;
+    private String unknownContextText;
+    private boolean cacheReady;
+
     KeybindTooltipRenderer(KeyBindingScanner scanner) {
         this.scanner = scanner;
     }
 
+    private void ensureCache() {
+        if (cacheReady) return;
+        for (KeyBindingScanner.KeyStatus s : KeyBindingScanner.KeyStatus.values()) {
+            statusLabels.put(s, Component.translatable(statusTranslation(s)).getString());
+        }
+        contextNames.put(ConflictContext.UNIVERSAL,
+                Component.translatable("screen.newvisualkeybing.viewer.context.short.universal").getString());
+        contextNames.put(ConflictContext.IN_GAME,
+                Component.translatable("screen.newvisualkeybing.viewer.context.short.in_game").getString());
+        contextNames.put(ConflictContext.GUI,
+                Component.translatable("screen.newvisualkeybing.viewer.context.short.gui").getString());
+        contextNames.put(ConflictContext.UNKNOWN,
+                Component.translatable("screen.newvisualkeybing.viewer.context.short.unknown").getString());
+        unknownContextText = Component.translatable("screen.newvisualkeybing.viewer.context.unknown").getString();
+        inputTypeKeyboard = Component.translatable("screen.newvisualkeybing.viewer.tooltip.input.keyboard").getString();
+        inputTypeMouse = Component.translatable("screen.newvisualkeybing.viewer.tooltip.input.mouse").getString();
+        inputTypeWheel = Component.translatable("screen.newvisualkeybing.viewer.tooltip.input.wheel").getString();
+        unboundText = Component.translatable("screen.newvisualkeybing.viewer.unbound").getString();
+        wheelHintText = Component.translatable("screen.newvisualkeybing.viewer.wheel_hint").getString();
+        conflictWarningText = Component.translatable("screen.newvisualkeybing.viewer.tooltip.conflict_warning").getString();
+        clickHintText = Component.translatable("screen.newvisualkeybing.viewer.tooltip.click_hint").getString();
+        cacheReady = true;
+    }
+
     void render(GuiGraphics g, Font font, int screenW, int screenH, int virtualKey, int mouseX, int mouseY) {
+        ensureCache();
         var c = UITheme.colors();
         boolean isWheel = KeyboardLayoutData.isWheel(virtualKey);
         boolean isMouseKey = KeyboardLayoutData.isMouse(virtualKey);
@@ -61,9 +101,9 @@ final class KeybindTooltipRenderer {
             innerW = Math.min(maxInnerW, Math.max(innerW, rowW));
         }
         if (status == KeyBindingScanner.KeyStatus.CONFLICT) {
-            innerW = Math.min(maxInnerW, Math.max(innerW, font.width(Component.translatable("screen.newvisualkeybing.viewer.tooltip.conflict_warning").getString())));
+            innerW = Math.min(maxInnerW, Math.max(innerW, font.width(conflictWarningText)));
         }
-        innerW = Math.min(maxInnerW, Math.max(innerW, font.width(Component.translatable("screen.newvisualkeybing.viewer.tooltip.click_hint").getString())));
+        innerW = Math.min(maxInnerW, Math.max(innerW, font.width(clickHintText)));
 
         int titleH = Math.max(font.lineHeight, 12);
         int rowH = font.lineHeight * 3 + 7;
@@ -92,32 +132,30 @@ final class KeybindTooltipRenderer {
 
         int chipX = tx + totalW - padX - chipW;
         renderStatusChip(g, font, chipX, curY, status, false);
-        g.drawString(font, fitToWidth(font, keyName, chipX - curX - 6), curX, curY + 1, c.textPrimary(), false);
+        g.drawString(font, fitToWidth(font, keyName, chipX - curX - 6), curX, curY + 1, c.textPrimary(), true);
         curY += titleH + 4;
 
-        g.fill(curX, curY, curX + innerW, curY + 1, UITheme.withAlpha(c.divider(), 0x70));
+        g.fill(curX, curY, curX + innerW, curY + 1, UITheme.withAlpha(c.divider(), 0x90));
         curY += 4;
-        g.drawString(font, fitToWidth(font, statusLine, innerW), curX, curY, c.textMuted(), false);
+        g.drawString(font, fitToWidth(font, statusLine, innerW), curX, curY, c.textSecondary(), true);
         curY += font.lineHeight + 5;
 
         if (isWheel) {
-            g.drawString(font, Component.translatable("screen.newvisualkeybing.viewer.wheel_hint").getString(),
-                    curX, curY, c.textMuted(), false);
+            g.drawString(font, wheelHintText, curX, curY, c.textMuted(), true);
             curY += font.lineHeight + 4;
         } else if (bindings.isEmpty()) {
-            g.drawString(font, Component.translatable("screen.newvisualkeybing.viewer.unbound").getString(),
-                    curX, curY, c.textMuted(), false);
+            g.drawString(font, unboundText, curX, curY, c.textMuted(), true);
             curY += font.lineHeight + 4;
         } else {
             String summary = Component.translatable("screen.newvisualkeybing.viewer.tooltip.summary",
                     bindings.size(), countSources(bindings), countCategories(bindings), countContexts(bindings)).getString();
-            g.drawString(font, fitToWidth(font, summary, innerW), curX, curY, c.textMuted(), false);
+            g.drawString(font, fitToWidth(font, summary, innerW), curX, curY, c.textSecondary(), true);
             curY += font.lineHeight + 5;
             for (int i = 0; i < maxRows; i++) {
                 KeyBindingScanner.KeyBindingInfo info = bindings.get(i);
-                int sideColor = info.self() ? c.accent() : UITheme.withAlpha(c.widgetBorder(), 0xB0);
+                int sideColor = info.self() ? c.accent() : UITheme.withAlpha(c.widgetBorder(), 0xC0);
                 UITheme.fillRoundedRect(g, curX, curY, innerW, rowH - 1, 4,
-                        UITheme.withAlpha(c.widgetBg(), info.self() ? 0x80 : 0x55));
+                        UITheme.withAlpha(c.widgetBg(), info.self() ? 0xA0 : 0x70));
                 g.fill(curX, curY + 2, curX + 2, curY + rowH - 2, sideColor);
 
                 String ctxTag = contextTag(info.conflictContext());
@@ -130,38 +168,36 @@ final class KeybindTooltipRenderer {
 
                 int textY = curY + 2;
                 g.drawString(font, actionFit, curX + 6, textY,
-                        info.self() ? c.accent() : c.textPrimary(), false);
+                        info.self() ? c.accent() : c.textPrimary(), true);
                 int rightX = curX + innerW - modW;
-                g.drawString(font, modText, rightX, textY, c.textMuted(), false);
+                g.drawString(font, modText, rightX, textY, c.textSecondary(), true);
                 if (!ctxTag.isEmpty()) {
                     int tagX = rightX - font.width(ctxTag) - 6;
-                    g.drawString(font, ctxTag, tagX, textY, c.accentAlt(), false);
+                    g.drawString(font, ctxTag, tagX, textY, c.accentAlt(), true);
                 }
                 String meta = info.categoryName() + " | " + contextName(info.conflictContext());
                 g.drawString(font, fitToWidth(font, meta, innerW - 6),
-                        curX + 6, curY + font.lineHeight + 4, c.textMuted(), false);
+                        curX + 6, curY + font.lineHeight + 4, c.textMuted(), true);
                 String keyMeta = info.translationKey() + " | "
                         + Component.translatable("screen.newvisualkeybing.viewer.tooltip.default_key",
                         info.defaultKeyName()).getString();
                 g.drawString(font, fitToWidth(font, keyMeta, innerW - 6),
-                        curX + 6, curY + font.lineHeight * 2 + 6, UITheme.withAlpha(c.textMuted(), 0xC0), false);
+                        curX + 6, curY + font.lineHeight * 2 + 6, UITheme.withAlpha(c.textMuted(), 0xD0), true);
                 curY += rowH;
             }
             if (bindings.size() > maxRows) {
                 g.drawString(font, Component.translatable("screen.newvisualkeybing.viewer.tooltip.more",
-                        bindings.size() - maxRows).getString(), curX, curY, c.textMuted(), false);
+                        bindings.size() - maxRows).getString(), curX, curY, c.textMuted(), true);
                 curY += font.lineHeight + 2;
             }
         }
 
         if (status == KeyBindingScanner.KeyStatus.CONFLICT) {
-            String warn = Component.translatable("screen.newvisualkeybing.viewer.tooltip.conflict_warning").getString();
-            g.drawString(font, fitToWidth(font, warn, innerW), curX, curY, c.dangerColor(), false);
+            g.drawString(font, fitToWidth(font, conflictWarningText, innerW), curX, curY, c.dangerColor(), true);
             curY += font.lineHeight + 4;
         }
 
-        String hint = Component.translatable("screen.newvisualkeybing.viewer.tooltip.click_hint").getString();
-        g.drawString(font, fitToWidth(font, hint, innerW), curX, curY, c.textMuted(), false);
+        g.drawString(font, fitToWidth(font, clickHintText, innerW), curX, curY, c.textMuted(), true);
     }
 
     private int renderStatusChip(GuiGraphics g, Font font, int x, int y,
@@ -174,15 +210,15 @@ final class KeybindTooltipRenderer {
             case OTHER_SINGLE, BOUND -> c.success();
             case CONFLICT -> c.danger();
         };
-        String label = Component.translatable(statusTranslation(status)).getString();
+        String label = statusLabels.get(status);
         int chipH = 12;
         int chipW = font.width(label) + 14;
         if (measureOnly) return chipW;
-        int chipFill = UITheme.lerpColor(c.widgetBg(), dot, 0.18f);
-        UITheme.fillRoundedRect(g, x, y, chipW, chipH, 6, chipFill);
-        UITheme.drawRoundedBorder(g, x, y, chipW, chipH, 6, UITheme.withAlpha(dot, 0xC0));
+        int chipFill = UITheme.lerpColor(c.widgetBg(), dot, 0.22f);
+        UITheme.fillRoundedRect(g, x, y, chipW, chipH, 6, UITheme.withAlpha(chipFill, 0xE0));
+        UITheme.drawRoundedBorder(g, x, y, chipW, chipH, 6, UITheme.withAlpha(dot, 0xD0));
         UITheme.fillRoundedRect(g, x + 4, y + (chipH - 4) / 2, 4, 4, 2, dot);
-        g.drawString(font, label, x + 10, y + (chipH - font.lineHeight) / 2 + 1, textColor, false);
+        g.drawString(font, label, x + 10, y + (chipH - font.lineHeight) / 2 + 1, textColor, true);
         return chipW;
     }
 
@@ -253,14 +289,10 @@ final class KeybindTooltipRenderer {
         return Component.translatable("screen.newvisualkeybing.viewer.info.contexts", count).getString();
     }
 
-    private static String inputTypeName(int virtualKey) {
-        if (KeyboardLayoutData.isWheel(virtualKey)) {
-            return Component.translatable("screen.newvisualkeybing.viewer.tooltip.input.wheel").getString();
-        }
-        if (KeyboardLayoutData.isMouse(virtualKey)) {
-            return Component.translatable("screen.newvisualkeybing.viewer.tooltip.input.mouse").getString();
-        }
-        return Component.translatable("screen.newvisualkeybing.viewer.tooltip.input.keyboard").getString();
+    private String inputTypeName(int virtualKey) {
+        if (KeyboardLayoutData.isWheel(virtualKey)) return inputTypeWheel;
+        if (KeyboardLayoutData.isMouse(virtualKey)) return inputTypeMouse;
+        return inputTypeKeyboard;
     }
 
     private static int statusAccentColor(KeyBindingScanner.KeyStatus status) {
@@ -292,13 +324,9 @@ final class KeybindTooltipRenderer {
         };
     }
 
-    private static String contextName(ConflictContext ctx) {
-        if (ctx == null) return Component.translatable("screen.newvisualkeybing.viewer.context.unknown").getString();
-        return switch (ctx) {
-            case UNIVERSAL -> Component.translatable("screen.newvisualkeybing.viewer.context.short.universal").getString();
-            case IN_GAME -> Component.translatable("screen.newvisualkeybing.viewer.context.short.in_game").getString();
-            case GUI -> Component.translatable("screen.newvisualkeybing.viewer.context.short.gui").getString();
-            case UNKNOWN -> Component.translatable("screen.newvisualkeybing.viewer.context.short.unknown").getString();
-        };
+    private String contextName(ConflictContext ctx) {
+        if (ctx == null) return unknownContextText;
+        String name = contextNames.get(ctx);
+        return name != null ? name : unknownContextText;
     }
 }

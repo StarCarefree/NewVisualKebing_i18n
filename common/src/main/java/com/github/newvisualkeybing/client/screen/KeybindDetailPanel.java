@@ -2,6 +2,7 @@ package com.github.newvisualkeybing.client.screen;
 
 import com.github.newvisualkeybing.client.keyboard.KeyBindingScanner;
 import com.github.newvisualkeybing.client.keyboard.KeyboardLayoutData;
+import com.github.newvisualkeybing.client.keyboard.KeybindProfileStore;
 import com.github.newvisualkeybing.client.ui.UITheme;
 import com.github.newvisualkeybing.platform.services.IPlatformHelper.ConflictContext;
 import net.minecraft.client.gui.Font;
@@ -24,21 +25,28 @@ final class KeybindDetailPanel {
     private static final int ACTION_BTN_GAP = 8;
     private static final int ROW_UNBIND_W = 14;
     private static final int ROW_UNBIND_GAP = 4;
+    private static final int ROW_PRIORITY_W = 48;
+    private static final int ROW_PRIORITY_BTN_W = 13;
+    private static final int ROW_PRIORITY_GAP = 5;
 
     private final KeyBindingScanner scanner;
+    private final KeybindProfileStore profileStore;
 
     private int scrollOffset;
     private int modifyX = -1, modifyY = -1;
     private int unbindX = -1, unbindY = -1;
     private int actionBtnW;
     private final List<RowHit> rowHits = new ArrayList<>();
+    private final List<PriorityHit> priorityHits = new ArrayList<>();
     private int[] rowHeights = new int[0];
     private boolean[] doubleLineRows = new boolean[0];
 
     record RowHit(int x, int y, int w, int h, KeyBindingScanner.KeyBindingInfo info) {}
+    record PriorityHit(int x, int y, int w, int h, int delta, KeyBindingScanner.KeyBindingInfo info) {}
 
-    KeybindDetailPanel(KeyBindingScanner scanner) {
+    KeybindDetailPanel(KeyBindingScanner scanner, KeybindProfileStore profileStore) {
         this.scanner = scanner;
+        this.profileStore = profileStore;
     }
 
     void resetScroll() {
@@ -65,10 +73,18 @@ final class KeybindDetailPanel {
         return null;
     }
 
+    PriorityHit getRowPriorityHit(double mx, double my) {
+        for (PriorityHit h : priorityHits) {
+            if (KeybindViewerScreen.inside(mx, my, h.x, h.y, h.w, h.h)) return h;
+        }
+        return null;
+    }
+
     void render(GuiGraphics g, Font font, int x, int y, int w, int h,
                 Integer virtualKey, int mouseX, int mouseY) {
         modifyX = modifyY = unbindX = unbindY = -1;
         rowHits.clear();
+        priorityHits.clear();
 
         var c = UITheme.colors();
         int contentY = KeybindViewerScreen.paintPanelBase(g, font, x, y, w, h,
@@ -240,7 +256,9 @@ final class KeybindDetailPanel {
         int singleRowH = font.lineHeight + 4;
         int doubleRowH = font.lineHeight * 2 + 5;
 
-        int reservedRight = ROW_UNBIND_W + ROW_UNBIND_GAP;
+        boolean showPriority = w >= 156;
+        int reservedRight = ROW_UNBIND_W + ROW_UNBIND_GAP
+                + (showPriority ? ROW_PRIORITY_W + ROW_PRIORITY_GAP : 0);
         int textW = w - reservedRight;
 
         ensureRowCapacity(bindings.size());
@@ -281,7 +299,7 @@ final class KeybindDetailPanel {
             if (usedH + rh > budgetH) { end = i; break; }
 
             KeyBindingScanner.KeyBindingInfo info = bindings.get(i);
-            renderBindingRow(g, font, x, rowY, w, rh, info, doubleLineRows[i], mouseX, mouseY);
+            renderBindingRow(g, font, x, rowY, w, rh, info, doubleLineRows[i], showPriority, mouseX, mouseY);
             rowY += rh + 2;
             usedH += rh + 2;
         }
@@ -353,10 +371,12 @@ final class KeybindDetailPanel {
 
     
     private void renderBindingRow(GuiGraphics g, Font font, int x, int y, int w, int rowH,
-                                  KeyBindingScanner.KeyBindingInfo info, boolean twoLines,
+                                  KeyBindingScanner.KeyBindingInfo info, boolean twoLines, boolean showPriority,
                                   int mouseX, int mouseY) {
         var c = UITheme.colors();
-        int textW = w - ROW_UNBIND_W - ROW_UNBIND_GAP;
+        int reservedRight = ROW_UNBIND_W + ROW_UNBIND_GAP
+                + (showPriority ? ROW_PRIORITY_W + ROW_PRIORITY_GAP : 0);
+        int textW = w - reservedRight;
         boolean rowHovered = KeybindViewerScreen.inside(mouseX, mouseY, x, y, w, rowH);
 
         if (info.self()) {
@@ -411,22 +431,55 @@ final class KeybindDetailPanel {
 
         int xButtonX = x + w - ROW_UNBIND_W;
         int xButtonY = y + (rowH - ROW_UNBIND_W) / 2;
+        if (showPriority) {
+            int priorityX = xButtonX - ROW_PRIORITY_GAP - ROW_PRIORITY_W;
+            renderPriorityControls(g, font, info, priorityX, xButtonY, mouseX, mouseY);
+        }
         rowHits.add(new RowHit(xButtonX, xButtonY, ROW_UNBIND_W, ROW_UNBIND_W, info));
         boolean xHovered = KeybindViewerScreen.inside(mouseX, mouseY, xButtonX, xButtonY, ROW_UNBIND_W, ROW_UNBIND_W);
-        if (rowHovered || xHovered) {
-            int fill = xHovered ? UITheme.lerpColor(c.widgetBg(), c.danger(), 0.55f)
-                                : UITheme.lerpColor(c.widgetBg(), c.danger(), 0.18f);
-            UITheme.fillRoundedRect(g, xButtonX, xButtonY, ROW_UNBIND_W, ROW_UNBIND_W, 3, fill);
-            UITheme.drawRoundedBorder(g, xButtonX, xButtonY, ROW_UNBIND_W, ROW_UNBIND_W, 3,
-                    UITheme.withAlpha(c.danger(), 0xC0));
-            int cx = xButtonX + ROW_UNBIND_W / 2;
-            int cy = xButtonY + ROW_UNBIND_W / 2;
-            int markColor = xHovered ? 0xFFFFFFFF : c.danger();
-            for (int d = -3; d <= 3; d++) {
-                g.fill(cx + d, cy + d, cx + d + 1, cy + d + 1, markColor);
-                g.fill(cx + d, cy - d, cx + d + 1, cy - d + 1, markColor);
-            }
+        int fill = xHovered ? UITheme.lerpColor(c.widgetBg(), c.danger(), 0.55f)
+                            : UITheme.lerpColor(c.widgetBg(), c.danger(), rowHovered ? 0.18f : 0.10f);
+        UITheme.fillRoundedRect(g, xButtonX, xButtonY, ROW_UNBIND_W, ROW_UNBIND_W, 3, fill);
+        UITheme.drawRoundedBorder(g, xButtonX, xButtonY, ROW_UNBIND_W, ROW_UNBIND_W, 3,
+                UITheme.withAlpha(c.danger(), xHovered ? 0xC0 : 0x78));
+        int cx = xButtonX + ROW_UNBIND_W / 2;
+        int cy = xButtonY + ROW_UNBIND_W / 2;
+        int markColor = xHovered ? 0xFFFFFFFF : c.danger();
+        for (int d = -3; d <= 3; d++) {
+            g.fill(cx + d, cy + d, cx + d + 1, cy + d + 1, markColor);
+            g.fill(cx + d, cy - d, cx + d + 1, cy - d + 1, markColor);
         }
+    }
+
+    private void renderPriorityControls(GuiGraphics g, Font font, KeyBindingScanner.KeyBindingInfo info,
+                                        int x, int y, int mouseX, int mouseY) {
+        var c = UITheme.colors();
+        int h = ROW_UNBIND_W;
+        int plusX = x;
+        int minusX = x + ROW_PRIORITY_W - ROW_PRIORITY_BTN_W;
+        boolean plusHover = KeybindViewerScreen.inside(mouseX, mouseY, plusX, y, ROW_PRIORITY_BTN_W, h);
+        boolean minusHover = KeybindViewerScreen.inside(mouseX, mouseY, minusX, y, ROW_PRIORITY_BTN_W, h);
+        priorityHits.add(new PriorityHit(plusX, y, ROW_PRIORITY_BTN_W, h, 1, info));
+        priorityHits.add(new PriorityHit(minusX, y, ROW_PRIORITY_BTN_W, h, -1, info));
+
+        UITheme.fillRoundedRect(g, plusX, y, ROW_PRIORITY_BTN_W, h, 3,
+                UITheme.lerpColor(c.widgetBg(), c.accent(), plusHover ? 0.48f : 0.18f));
+        UITheme.drawRoundedBorder(g, plusX, y, ROW_PRIORITY_BTN_W, h, 3,
+                UITheme.withAlpha(c.accent(), plusHover ? 0xC0 : 0x80));
+        UITheme.fillRoundedRect(g, minusX, y, ROW_PRIORITY_BTN_W, h, 3,
+                UITheme.lerpColor(c.widgetBg(), c.warningColor(), minusHover ? 0.48f : 0.18f));
+        UITheme.drawRoundedBorder(g, minusX, y, ROW_PRIORITY_BTN_W, h, 3,
+                UITheme.withAlpha(c.warningColor(), minusHover ? 0xC0 : 0x80));
+
+        g.drawString(font, "+", plusX + 4, y + (h - font.lineHeight) / 2, c.textPrimary(), false);
+        g.drawString(font, "-", minusX + 5, y + (h - font.lineHeight) / 2, c.textPrimary(), false);
+        String value = String.valueOf(profileStore.priorityOf(info.translationKey()));
+        int valueX = x + ROW_PRIORITY_BTN_W;
+        int valueW = ROW_PRIORITY_W - ROW_PRIORITY_BTN_W * 2;
+        String fitted = KeybindViewerScreen.fitToWidth(font, value, valueW);
+        g.drawString(font, fitted,
+                valueX + (valueW - font.width(fitted)) / 2,
+                y + (h - font.lineHeight) / 2, c.textMuted(), false);
     }
 
     private static String contextTag(ConflictContext ctx) {

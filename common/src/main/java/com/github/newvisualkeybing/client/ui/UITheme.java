@@ -14,6 +14,8 @@ public final class UITheme {
     private static final int COVERAGE_RADIUS_LIMIT = 96;
     private static final int[][] FILL_CORNER_COVERAGE = new int[(COVERAGE_RADIUS_LIMIT + 1) * 4][];
     private static final int[][] BORDER_CORNER_COVERAGE = new int[(COVERAGE_RADIUS_LIMIT + 1) * 4][];
+    private static final int[][] FILL_CORNER_SPANS = new int[(COVERAGE_RADIUS_LIMIT + 1) * 4][];
+    private static final int[][] BORDER_CORNER_SPANS = new int[(COVERAGE_RADIUS_LIMIT + 1) * 4][];
 
 
     private static final ColorPalette DARK = new ColorPalette(
@@ -90,15 +92,7 @@ public final class UITheme {
             g.fill(cx, cy, cx + 1, cy + 1, color);
             return;
         }
-        int[] coverage = fillCornerCoverage(r, left, top);
-        for (int dy = 0; dy < r; dy++) {
-            for (int dx = 0; dx < r; dx++) {
-                int hits = coverage[dy * r + dx];
-                if (hits == 0) continue;
-                int finalColor = hits == 16 ? color : scaleAlpha(color, hits / 16f);
-                g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, finalColor);
-            }
-        }
+        drawCornerSpans(g, cx, cy, fillCornerSpans(r, left, top), color);
     }
 
     public static void drawRoundedBorder(GuiGraphics g, int x, int y, int w, int h, int radius, int color) {
@@ -187,14 +181,14 @@ public final class UITheme {
             g.fill(cx, cy, cx + 1, cy + 1, color);
             return;
         }
-        int[] coverage = borderCornerCoverage(r, left, top);
-        for (int dy = 0; dy < r; dy++) {
-            for (int dx = 0; dx < r; dx++) {
-                int hits = coverage[dy * r + dx];
-                if (hits == 0) continue;
-                int finalColor = hits == 16 ? color : scaleAlpha(color, hits / 16f);
-                g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, finalColor);
-            }
+        drawCornerSpans(g, cx, cy, borderCornerSpans(r, left, top), color);
+    }
+
+    private static void drawCornerSpans(GuiGraphics g, int cx, int cy, int[] spans, int color) {
+        for (int i = 0; i < spans.length; i += 4) {
+            int hits = spans[i + 3];
+            int finalColor = hits == 16 ? color : scaleAlpha(color, hits / 16f);
+            g.fill(cx + spans[i + 1], cy + spans[i], cx + spans[i + 2], cy + spans[i] + 1, finalColor);
         }
     }
 
@@ -220,6 +214,30 @@ public final class UITheme {
             return built;
         }
         return buildBorderCornerCoverage(r, left, top);
+    }
+
+    private static int[] fillCornerSpans(int r, boolean left, boolean top) {
+        int key = coverageKey(r, left, top);
+        if (key >= 0) {
+            int[] cached = FILL_CORNER_SPANS[key];
+            if (cached != null) return cached;
+            int[] built = buildCornerSpans(fillCornerCoverage(r, left, top), r);
+            FILL_CORNER_SPANS[key] = built;
+            return built;
+        }
+        return buildCornerSpans(buildFillCornerCoverage(r, left, top), r);
+    }
+
+    private static int[] borderCornerSpans(int r, boolean left, boolean top) {
+        int key = coverageKey(r, left, top);
+        if (key >= 0) {
+            int[] cached = BORDER_CORNER_SPANS[key];
+            if (cached != null) return cached;
+            int[] built = buildCornerSpans(borderCornerCoverage(r, left, top), r);
+            BORDER_CORNER_SPANS[key] = built;
+            return built;
+        }
+        return buildCornerSpans(buildBorderCornerCoverage(r, left, top), r);
     }
 
     private static int coverageKey(int r, boolean left, boolean top) {
@@ -286,6 +304,42 @@ public final class UITheme {
         return coverage;
     }
 
+    private static int[] buildCornerSpans(int[] coverage, int r) {
+        int count = 0;
+        for (int dy = 0; dy < r; dy++) {
+            int dx = 0;
+            while (dx < r) {
+                int hits = coverage[dy * r + dx];
+                if (hits == 0) {
+                    dx++;
+                    continue;
+                }
+                count++;
+                dx++;
+                while (dx < r && coverage[dy * r + dx] == hits) dx++;
+            }
+        }
+        int[] spans = new int[count * 4];
+        int pos = 0;
+        for (int dy = 0; dy < r; dy++) {
+            int dx = 0;
+            while (dx < r) {
+                int hits = coverage[dy * r + dx];
+                if (hits == 0) {
+                    dx++;
+                    continue;
+                }
+                int start = dx++;
+                while (dx < r && coverage[dy * r + dx] == hits) dx++;
+                spans[pos++] = dy;
+                spans[pos++] = start;
+                spans[pos++] = dx;
+                spans[pos++] = hits;
+            }
+        }
+        return spans;
+    }
+
     public static void fillGradient(GuiGraphics g, int x, int y, int w, int h, int colorTop, int colorBottom) {
         if (h <= 0 || w <= 0) return;
         int steps = Math.min(h, 16);
@@ -336,10 +390,16 @@ public final class UITheme {
 
     public static void renderTooltipBackground(GuiGraphics g, int x, int y, int w, int h) {
         var c = colors();
-        drawCardShadow(g, x - 2, y - 2, w + 4, h + 4, 6);
-        fillRoundedRect(g, x, y, w, h, 6, withAlpha(c.headerBg(), 0xF5));
-        drawRoundedBorder(g, x, y, w, h, 6, withAlpha(c.widgetBorderHover(), 0x80));
-        fillRoundedRect(g, x, y, w, 3, 3, withAlpha(0xFFFFFF, 0x20));
+        for (int i = 5; i >= 1; i--) {
+            int alpha = Math.max(2, 14 - i * 2);
+            fillRoundedRect(g, x - i, y - i + 2, w + i * 2, h + i * 2, 6 + i, withAlpha(c.shadow(), alpha));
+        }
+        fillRoundedRect(g, x + 1, y + 1, w, h, 6, withAlpha(0x000000, 0x60));
+        fillRoundedRect(g, x, y, w, h, 6, withAlpha(c.headerBg(), 0xC2));
+        fillRoundedRect(g, x + 1, y + 1, w - 2, Math.max(4, h / 4), 6, withAlpha(0xFFFFFF, 0x10));
+        drawRoundedBorder(g, x, y, w, h, 6, withAlpha(c.widgetBorderHover(), 0xB0));
+        drawRoundedBorder(g, x + 1, y + 1, w - 2, h - 2, 5, withAlpha(0xFFFFFF, 0x10));
+        fillRoundedRect(g, x, y, w, 3, 3, withAlpha(0xFFFFFF, 0x28));
     }
 
     public static void drawHLine(GuiGraphics g, int x, int y, int width, int color) {
