@@ -123,8 +123,8 @@ public class KeybindViewerScreen extends Screen {
     private List<ModRow> cachedModRows = List.of();
     private final String[] tabLabels = new String[FilterTab.values().length];
     private final int[] tabWidths = new int[FilterTab.values().length];
-    private final String[] legendLabels = new String[4];
-    private final int[] legendLabelWidths = new int[4];
+    private final String[] legendLabels = new String[5];
+    private final int[] legendLabelWidths = new int[5];
     private String hintLabel;
     private String modPanelTitle;
     private String modSearchPlaceholder;
@@ -259,7 +259,8 @@ public class KeybindViewerScreen extends Screen {
         legendLabels[0] = Component.translatable("screen.newvisualkeybing.viewer.legend.free").getString();
         legendLabels[1] = Component.translatable("screen.newvisualkeybing.viewer.legend.self").getString();
         legendLabels[2] = Component.translatable("screen.newvisualkeybing.viewer.legend.other").getString();
-        legendLabels[3] = Component.translatable("screen.newvisualkeybing.viewer.legend.conflict").getString();
+        legendLabels[3] = Component.translatable("screen.newvisualkeybing.viewer.legend.combo").getString();
+        legendLabels[4] = Component.translatable("screen.newvisualkeybing.viewer.legend.conflict").getString();
         for (int i = 0; i < legendLabels.length; i++) {
             legendLabelWidths[i] = font.width(legendLabels[i]);
         }
@@ -395,7 +396,7 @@ public class KeybindViewerScreen extends Screen {
         int x = toolbarLegendX;
         int y = HEADER_H + (TOOLBAR_H - 12) / 2;
 
-        int[] colors = { c.widgetBorder(), c.accent(), c.success(), c.danger() };
+        int[] colors = { c.widgetBorder(), c.accent(), c.success(), c.warning(), c.danger() };
 
         for (int i = 0; i < legendLabels.length; i++) {
             UITheme.fillRoundedRectFast(g, x, y + 2, 8, 8, 4, colors[i]);
@@ -441,8 +442,12 @@ public class KeybindViewerScreen extends Screen {
                 legendLabels[2],
                 stats.other(), leftLimit);
         x += 6;
-        renderStatChip(g, x, chipY, c.danger(),
+        x = renderStatChip(g, x, chipY, c.warning(),
                 legendLabels[3],
+                stats.combo(), leftLimit);
+        x += 6;
+        renderStatChip(g, x, chipY, c.danger(),
+                legendLabels[4],
                 stats.conflict(), leftLimit);
 
         if (middleX > x + 8 && middleX + middleW < hintX - 8) {
@@ -497,8 +502,9 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
 
         int listY = searchY + 26;
         int clearY = y + h - PANEL_PAD - ACTION_BTN_H;
-        int toggleY = clearY - ACTION_BTN_H - ACTION_BTN_GAP;
-        int listBottom = toggleY - ACTION_BTN_GAP;
+        int hideToggleY = clearY - ACTION_BTN_H - ACTION_BTN_GAP;
+        int comboToggleY = hideToggleY - ACTION_BTN_H - ACTION_BTN_GAP;
+        int listBottom = comboToggleY - ACTION_BTN_GAP;
         List<ModRow> mods = filteredModRows(fieldW);
         int rowH = 18;
         int visibleRows = Math.max(1, (listBottom - listY) / rowH);
@@ -525,11 +531,18 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             rowY += rowH;
         }
 
-        boolean toggleHover = inside(mouseX, mouseY, fieldX, toggleY, fieldW, ACTION_BTN_H);
+        boolean comboToggleHover = inside(mouseX, mouseY, fieldX, comboToggleY, fieldW, ACTION_BTN_H);
+        String comboToggleLabel = Component.translatable(viewerConfig.comboKeysNonConflicting()
+                ? "screen.newvisualkeybing.viewer.combo_non_conflict.on"
+                : "screen.newvisualkeybing.viewer.combo_non_conflict.off").getString();
+        renderActionButton(g, font, fieldX, comboToggleY, fieldW, ACTION_BTN_H,
+                comboToggleLabel, viewerConfig.comboKeysNonConflicting() ? c.warning() : c.widgetBorder(), comboToggleHover);
+
+        boolean toggleHover = inside(mouseX, mouseY, fieldX, hideToggleY, fieldW, ACTION_BTN_H);
         String toggleLabel = Component.translatable(viewerConfig.hideNonSelectedMod()
                 ? "screen.newvisualkeybing.viewer.hide_unselected.on"
                 : "screen.newvisualkeybing.viewer.hide_unselected.off").getString();
-        renderActionButton(g, font, fieldX, toggleY, fieldW, ACTION_BTN_H,
+        renderActionButton(g, font, fieldX, hideToggleY, fieldW, ACTION_BTN_H,
                 toggleLabel, viewerConfig.hideNonSelectedMod() ? c.accent() : c.widgetBorder(), toggleHover);
 
         boolean clearHover = inside(mouseX, mouseY, fieldX, clearY, fieldW, ACTION_BTN_H);
@@ -855,6 +868,7 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             case FREE -> c.widgetBorder();
             case SELF -> c.accent();
             case OTHER_SINGLE, BOUND -> c.success();
+            case COMBO -> c.warning();
             case CONFLICT -> c.danger();
         };
     }
@@ -865,6 +879,7 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         return switch (status) {
             case CONFLICT -> 0xFFFFFFFF;
             case SELF -> 0xFFFFFFFF;
+            case COMBO -> c.textPrimary();
             case OTHER_SINGLE, BOUND -> c.textPrimary();
             case FREE -> c.textSecondary();
         };
@@ -876,6 +891,7 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             case FREE -> c.widgetBg();
             case SELF -> UITheme.lerpColor(c.widgetBg(), c.accent(), 0.68f);
             case OTHER_SINGLE, BOUND -> UITheme.lerpColor(c.widgetBg(), c.success(), 0.62f);
+            case COMBO -> UITheme.lerpColor(c.widgetBg(), c.warning(), 0.68f);
             case CONFLICT -> UITheme.lerpColor(c.widgetBg(), c.danger(), 0.82f);
         };
     }
@@ -1061,9 +1077,10 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         int searchY = contentY + 4;
         int listY = searchY + 26;
         int clearY = y + h - PANEL_PAD - ACTION_BTN_H;
-        int toggleY = clearY - ACTION_BTN_H - ACTION_BTN_GAP;
+        int hideToggleY = clearY - ACTION_BTN_H - ACTION_BTN_GAP;
+        int comboToggleY = hideToggleY - ACTION_BTN_H - ACTION_BTN_GAP;
         int rowH = 18;
-        int visibleRows = Math.max(1, (toggleY - ACTION_BTN_GAP - listY) / rowH);
+        int visibleRows = Math.max(1, (comboToggleY - ACTION_BTN_GAP - listY) / rowH);
 
         if (inside(mouseX, mouseY, fieldX, searchY, fieldW, 18)) {
             modSearchQuery = "";
@@ -1082,7 +1099,17 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             rowY += rowH;
         }
 
-        if (inside(mouseX, mouseY, fieldX, toggleY, fieldW, ACTION_BTN_H)) {
+        if (inside(mouseX, mouseY, fieldX, comboToggleY, fieldW, ACTION_BTN_H)) {
+            boolean enabled = viewerConfig.toggleComboKeysNonConflicting();
+            scanner.scan();
+            refreshFilters();
+            showNotice(Component.translatable(enabled
+                    ? "screen.newvisualkeybing.viewer.combo_non_conflict.enabled"
+                    : "screen.newvisualkeybing.viewer.combo_non_conflict.disabled").getString());
+            return true;
+        }
+
+        if (inside(mouseX, mouseY, fieldX, hideToggleY, fieldW, ACTION_BTN_H)) {
             boolean enabled = viewerConfig.toggleHideNonSelectedMod();
             showNotice(Component.translatable(enabled
                     ? "screen.newvisualkeybing.viewer.hide_unselected.enabled"
@@ -1141,10 +1168,11 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             int x = BODY_PAD;
             if (mouseX >= x && mouseX <= x + MOD_PANEL_W) {
                 int clearY = contentTop + (contentBottom - contentTop) - PANEL_PAD - ACTION_BTN_H;
-                int toggleY = clearY - ACTION_BTN_H - ACTION_BTN_GAP;
+                int hideToggleY = clearY - ACTION_BTN_H - ACTION_BTN_GAP;
+                int comboToggleY = hideToggleY - ACTION_BTN_H - ACTION_BTN_GAP;
                 int searchY = contentTop + PANEL_CONTENT_TOP + 4;
                 int listY = searchY + 26;
-                int visibleRows = Math.max(1, (toggleY - ACTION_BTN_GAP - listY) / 18);
+                int visibleRows = Math.max(1, (comboToggleY - ACTION_BTN_GAP - listY) / 18);
                 modScrollOffset = Mth.clamp(modScrollOffset - (int) Math.signum(delta), 0,
                         Math.max(0, filteredModEntries().size() - visibleRows));
                 return true;

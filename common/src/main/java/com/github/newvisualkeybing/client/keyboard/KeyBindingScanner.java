@@ -4,6 +4,7 @@ import com.github.newvisualkeybing.Constants;
 import com.github.newvisualkeybing.mixin.KeyMappingAccessor;
 import com.github.newvisualkeybing.platform.Services;
 import com.github.newvisualkeybing.platform.services.IPlatformHelper.ConflictContext;
+import com.github.newvisualkeybing.platform.services.IPlatformHelper.InputModifier;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -28,6 +29,7 @@ public class KeyBindingScanner {
         FREE,
         SELF,
         OTHER_SINGLE,
+        COMBO,
         BOUND,
         CONFLICT
     }
@@ -41,6 +43,9 @@ public class KeyBindingScanner {
             String modName,
             boolean self,
             ConflictContext conflictContext,
+            InputModifier modifier,
+            InputModifier defaultModifier,
+            String baseKeyName,
             String currentKeyName,
             String defaultKeyName
     ) {
@@ -54,7 +59,7 @@ public class KeyBindingScanner {
         }
     }
 
-    public record ScanStats(int total, int free, int self, int other, int bound, int conflict) {}
+    public record ScanStats(int total, int free, int self, int other, int combo, int bound, int conflict) {}
     public record ModStats(int bindings, int inputs, int conflicts) {}
 
     private static final Set<String> VANILLA_CATEGORIES = Set.of(
@@ -69,7 +74,7 @@ public class KeyBindingScanner {
     private final Map<String, String> registeredMods = new LinkedHashMap<>();
     private final Map<String, ModStats> modStats = new HashMap<>();
     private Map<String, String> sortedRegisteredMods = Collections.emptyMap();
-    private ScanStats stats = new ScanStats(0, 0, 0, 0, 0, 0);
+    private ScanStats stats = new ScanStats(0, 0, 0, 0, 0, 0, 0);
     private long version;
 
     private long lastScanTime = -1L;
@@ -119,6 +124,10 @@ public class KeyBindingScanner {
             if (key == InputConstants.UNKNOWN) continue;
 
             ConflictContext ctx = Services.PLATFORM.getConflictContext(mapping);
+            InputModifier modifier = Services.PLATFORM.getKeyModifier(mapping);
+            InputModifier defaultModifier = Services.PLATFORM.getDefaultKeyModifier(mapping);
+            String baseKeyName = key.getDisplayName().getString();
+            String defaultBaseKeyName = mapping.getDefaultKey().getDisplayName().getString();
             KeyBindingInfo info = new KeyBindingInfo(
                     actionKey,
                     Component.translatable(actionKey).getString(),
@@ -128,8 +137,11 @@ public class KeyBindingScanner {
                     modName,
                     Constants.MOD_ID.equals(modId),
                     ctx,
-                    key.getDisplayName().getString(),
-                    mapping.getDefaultKey().getDisplayName().getString()
+                    modifier,
+                    defaultModifier,
+                    baseKeyName,
+                    displayKeyName(modifier, baseKeyName),
+                    displayKeyName(defaultModifier, defaultBaseKeyName)
             );
 
             if (key.getType() == InputConstants.Type.MOUSE) {
@@ -328,13 +340,14 @@ public class KeyBindingScanner {
     }
 
     private ScanStats computeStats() {
-        int free = 0, self = 0, other = 0, bound = 0, conflict = 0;
+        int free = 0, self = 0, other = 0, combo = 0, bound = 0, conflict = 0;
         int total = KeyboardLayoutData.KEYS.size() + KeyboardLayoutData.MOUSE_KEYS.size();
         for (KeyboardLayoutData.KeyDef key : KeyboardLayoutData.KEYS) {
             switch (getStatus(key.glfwKey())) {
                 case FREE -> free++;
                 case SELF -> self++;
                 case OTHER_SINGLE -> other++;
+                case COMBO -> combo++;
                 case BOUND -> bound++;
                 case CONFLICT -> conflict++;
             }
@@ -344,11 +357,12 @@ public class KeyBindingScanner {
                 case FREE -> free++;
                 case SELF -> self++;
                 case OTHER_SINGLE -> other++;
+                case COMBO -> combo++;
                 case BOUND -> bound++;
                 case CONFLICT -> conflict++;
             }
         }
-        return new ScanStats(total, free, self, other, bound + self + other, conflict);
+        return new ScanStats(total, free, self, other, combo, bound + self + other + combo, conflict);
     }
 
     private void rebuildModStats() {
@@ -444,21 +458,29 @@ public class KeyBindingScanner {
                 || info.categoryName().toLowerCase(Locale.ROOT).contains(query)
                 || info.categoryKey().toLowerCase(Locale.ROOT).contains(query)
                 || info.modId().toLowerCase(Locale.ROOT).contains(query)
-                || info.modName().toLowerCase(Locale.ROOT).contains(query);
+                || info.modName().toLowerCase(Locale.ROOT).contains(query)
+                || info.currentKeyName().toLowerCase(Locale.ROOT).contains(query);
     }
 
 
     private static KeyStatus computeStatus(List<KeyBindingInfo> infos) {
         if (infos.isEmpty()) return KeyStatus.FREE;
-        if (infos.size() == 1) return infos.get(0).self() ? KeyStatus.SELF : KeyStatus.OTHER_SINGLE;
+        boolean comboAware = KeybindViewerConfig.global().comboKeysNonConflicting();
+        boolean hasCombo = infos.stream().anyMatch(KeyBindingScanner::isCombination);
+        if (infos.size() == 1) {
+            if (comboAware && hasCombo) return KeyStatus.COMBO;
+            return infos.get(0).self() ? KeyStatus.SELF : KeyStatus.OTHER_SINGLE;
+        }
 
         for (int i = 0; i < infos.size(); i++) {
             for (int j = i + 1; j < infos.size(); j++) {
+                if (comboAware && infos.get(i).modifier() != infos.get(j).modifier()) continue;
                 ConflictContext ci = infos.get(i).conflictContext();
                 ConflictContext cj = infos.get(j).conflictContext();
                 if (ci != null && cj != null && ci.conflicts(cj)) return KeyStatus.CONFLICT;
             }
         }
+        if (comboAware && hasCombo) return KeyStatus.COMBO;
         boolean hasSelf = infos.stream().anyMatch(KeyBindingInfo::self);
         boolean hasOther = infos.stream().anyMatch(info -> !info.self());
         if (hasSelf && hasOther) return KeyStatus.CONFLICT;
@@ -471,8 +493,18 @@ public class KeyBindingScanner {
             case FREE -> status == KeyStatus.FREE;
             case SELF -> status == KeyStatus.SELF;
             case OTHER -> status == KeyStatus.OTHER_SINGLE || status == KeyStatus.BOUND;
+            case COMBO -> status == KeyStatus.COMBO;
             case CONFLICT -> status == KeyStatus.CONFLICT;
         };
+    }
+
+    private static String displayKeyName(InputModifier modifier, String keyName) {
+        if (modifier == null || !modifier.isCombination()) return keyName;
+        return modifier.displayName() + " + " + keyName;
+    }
+
+    private static boolean isCombination(KeyBindingInfo info) {
+        return info.modifier() != null && info.modifier().isCombination();
     }
 
 
@@ -526,4 +558,3 @@ public class KeyBindingScanner {
         return modId;
     }
 }
-

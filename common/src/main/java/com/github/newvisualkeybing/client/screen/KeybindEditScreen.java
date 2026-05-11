@@ -3,10 +3,12 @@ package com.github.newvisualkeybing.client.screen;
 import com.github.newvisualkeybing.client.keyboard.KeyBindingScanner;
 import com.github.newvisualkeybing.client.keyboard.KeybindPriorityEnforcer;
 import com.github.newvisualkeybing.client.keyboard.KeybindProfileStore;
+import com.github.newvisualkeybing.client.keyboard.KeybindViewerConfig;
 import com.github.newvisualkeybing.client.keyboard.KeyboardLayoutData;
 import com.github.newvisualkeybing.client.ui.MCButton;
 import com.github.newvisualkeybing.client.ui.UITheme;
 import com.github.newvisualkeybing.mixin.KeyMappingAccessor;
+import com.github.newvisualkeybing.platform.Services;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -244,6 +246,7 @@ public class KeybindEditScreen extends Screen {
         boolean isWaiting = waitingMapping == ke.mapping;
         boolean isUnbound = ke.mapping.isUnbound();
         boolean conflict = isConflicting(ke.mapping, all);
+        boolean combo = isCombination(ke.mapping);
         boolean focusedTarget = focusVirtualKey != null && matchesFocus(ke.mapping);
 
         if (focusedTarget) {
@@ -281,6 +284,7 @@ public class KeybindEditScreen extends Screen {
 
         int statusColor = focusedTarget ? colors.accent()
                 : conflict ? colors.dangerColor()
+                : combo ? colors.warning()
                 : focusVirtualKey != null && isUnbound ? colors.accentLight()
                 : isUnbound ? colors.textMuted()
                 : colors.accentLight();
@@ -290,7 +294,9 @@ public class KeybindEditScreen extends Screen {
         int chTextX = changeX + (CHANGE_BTN_W - font.width(changeLabel)) / 2;
         int chTextY = y + (ENTRY_H - font.lineHeight) / 2;
         int chTextColor = focusedTarget ? colors.accentLight()
-                : isUnbound ? colors.textMuted() : conflict ? colors.dangerColor() : colors.textPrimary();
+                : isUnbound ? colors.textMuted() : conflict ? colors.dangerColor()
+                : combo ? colors.warning()
+                : colors.textPrimary();
         graphics.drawString(font, changeLabel, chTextX, chTextY, chTextColor, false);
 
         int resetX = changeX + CHANGE_BTN_W + COL_GAP;
@@ -509,9 +515,19 @@ public class KeybindEditScreen extends Screen {
         for (KeyMapping other : all) {
             if (other == km) continue;
             if (other.isUnbound()) continue;
+            if (KeybindViewerConfig.global().comboKeysNonConflicting()
+                    && Services.PLATFORM.getKeyModifier(km) != Services.PLATFORM.getKeyModifier(other)) {
+                continue;
+            }
             if (other.same(km)) return true;
         }
         return false;
+    }
+
+    private static boolean isCombination(KeyMapping km) {
+        return !km.isUnbound()
+                && KeybindViewerConfig.global().comboKeysNonConflicting()
+                && Services.PLATFORM.getKeyModifier(km).isCombination();
     }
 
     
@@ -541,4 +557,3 @@ public class KeybindEditScreen extends Screen {
     private record CategoryEntry(String name) {}
     private record KeyEntry(KeyMapping mapping) {}
 }
-

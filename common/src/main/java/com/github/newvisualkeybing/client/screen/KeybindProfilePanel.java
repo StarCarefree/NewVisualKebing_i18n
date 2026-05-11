@@ -40,15 +40,11 @@ final class KeybindProfilePanel {
 
     void render(GuiGraphics graphics, Font font, int x, int y, int h, int mouseX, int mouseY) {
         var colors = UITheme.colors();
-        UITheme.fillRoundedRectFast(graphics, x, y, WIDTH, h, 8, UITheme.withAlpha(colors.headerBg(), 0xC8));
-        UITheme.drawRoundedBorderFast(graphics, x, y, WIDTH, h, 8, colors.widgetBorder());
-
         String title = Component.translatable("screen.newvisualkeybing.viewer.profile.title").getString();
-        graphics.drawString(font, title, x + 10, y + 9, colors.textPrimary(), false);
-        graphics.fill(x + 8, y + 25, x + WIDTH - 8, y + 26, UITheme.withAlpha(colors.divider(), 0xA0));
+        int contentY = KeybindViewerScreen.paintPanelBase(graphics, font, x, y, WIDTH, h, title);
 
         int nameX = x + 10;
-        int nameY = y + 32;
+        int nameY = contentY + 4;
         ensureNameBox(font, nameX, nameY);
         syncNameBox();
         UITheme.fillRoundedRectFast(graphics, nameX - 2, nameY - 2, WIDTH - 16, NAME_BOX_H + 4, 5, colors.inputBg());
@@ -56,7 +52,7 @@ final class KeybindProfilePanel {
                 renaming || nameBox.isFocused() ? colors.accent() : colors.widgetBorder());
         nameBox.render(graphics, mouseX, mouseY, 1.0f);
 
-        int rowY = y + 58;
+        int rowY = contentY + 30;
         List<KeybindProfileStore.Profile> profiles = profileStore.profiles();
         int selected = profileStore.selectedIndex();
         int buttonTop = buttonTop(y, h);
@@ -71,13 +67,15 @@ final class KeybindProfilePanel {
             UITheme.fillRoundedRectFast(graphics, x + 8, rowY, WIDTH - 16, ROW_H - 2, 5, fill);
             if (active) graphics.fill(x + 10, rowY + 3, x + 12, rowY + ROW_H - 5, colors.accent());
             String label = fit(font, profileStore.compactProfileLabel(profile), WIDTH - 30);
-            graphics.drawString(font, label, x + 16, rowY + 5, active ? colors.textPrimary() : colors.textSecondary(), false);
+            graphics.drawString(font, label, x + 16, textY(font, rowY, ROW_H - 2),
+                    active ? colors.textPrimary() : colors.textSecondary(), false);
             rowY += ROW_H;
         }
 
         if (profiles.isEmpty()) {
             String empty = Component.translatable("screen.newvisualkeybing.viewer.profile.empty").getString();
-            graphics.drawString(font, fit(font, empty, WIDTH - 20), x + 10, rowY + 4, colors.textMuted(), false);
+            graphics.drawString(font, fit(font, empty, WIDTH - 20), x + 10,
+                    textY(font, rowY, ROW_H - 2), colors.textMuted(), false);
         }
 
         int halfW = (WIDTH - 22) / 2;
@@ -112,7 +110,8 @@ final class KeybindProfilePanel {
         releaseExternalFocus.run();
 
         int nameX = x + 10;
-        int nameY = y + 32;
+        int contentY = y + 28;
+        int nameY = contentY + 4;
         if (nameBox != null && nameBox.mouseClicked(mouseX, mouseY, 0)) {
             nameBox.setFocused(true);
             if (profileStore.selectedProfile() != null) renaming = true;
@@ -197,7 +196,7 @@ final class KeybindProfilePanel {
             return true;
         }
 
-        int rowY = y + 58;
+        int rowY = contentY + 30;
         int rowBottom = buttonTop - 6;
         List<KeybindProfileStore.Profile> profiles = profileStore.profiles();
         for (int i = 0; i < profiles.size() && rowY + ROW_H <= rowBottom; i++) {
@@ -313,7 +312,11 @@ final class KeybindProfilePanel {
         UITheme.drawRoundedBorderFast(graphics, x, y, w, h, 4, UITheme.withAlpha(accent, 0xA0));
         String fitted = fit(font, label, w - 8);
         graphics.drawString(font, fitted, x + (w - font.width(fitted)) / 2,
-                y + (h - font.lineHeight) / 2, colors.textPrimary(), false);
+                textY(font, y, h), colors.textPrimary(), false);
+    }
+
+    private static int textY(Font font, int y, int h) {
+        return y + (h - font.lineHeight) / 2;
     }
 
     private static String fit(Font font, String text, int maxWidth) {

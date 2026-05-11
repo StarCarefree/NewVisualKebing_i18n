@@ -241,7 +241,9 @@ final class KeybindMouseRenderer {
         int bh = font.lineHeight;
         int bx = b.x + b.w - bw - 2;
         int by = b.y + 2;
-        int chipColor = status == KeyBindingScanner.KeyStatus.CONFLICT ? c.danger() : c.accent();
+        int chipColor = status == KeyBindingScanner.KeyStatus.CONFLICT ? c.danger()
+                : status == KeyBindingScanner.KeyStatus.COMBO ? c.warning()
+                : c.accent();
         UITheme.fillRoundedRectFast(g, bx, by, bw, bh, bh / 2, chipColor);
         g.drawString(font, text, bx + 3, by + 1, 0xFFFFFFFF, false);
     }

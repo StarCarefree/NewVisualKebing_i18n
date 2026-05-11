@@ -180,6 +180,8 @@ final class KeybindTooltipRenderer {
                     + (ctxTag.isEmpty() ? 0 : font.width(ctxTag) + 8);
             rowW = Math.max(rowW, 8 + font.width(info.categoryName() + " | " + contextName(info.conflictContext())));
             rowW = Math.max(rowW, 8 + font.width(info.translationKey() + " | "
+                    + Component.translatable("screen.newvisualkeybing.viewer.tooltip.current_key",
+                    info.currentKeyName()).getString() + " | "
                     + Component.translatable("screen.newvisualkeybing.viewer.tooltip.default_key",
                     info.defaultKeyName()).getString()));
             innerW = Math.min(maxInnerW, Math.max(innerW, rowW));
@@ -226,6 +228,8 @@ final class KeybindTooltipRenderer {
                 String actionFit = fitToWidth(font, info.actionName(), Math.max(30, innerW - 10 - rightBlockW));
                 String meta = info.categoryName() + " | " + contextName(info.conflictContext());
                 String keyMeta = info.translationKey() + " | "
+                        + Component.translatable("screen.newvisualkeybing.viewer.tooltip.current_key",
+                        info.currentKeyName()).getString() + " | "
                         + Component.translatable("screen.newvisualkeybing.viewer.tooltip.default_key",
                         info.defaultKeyName()).getString();
                 rows[i] = new BindingRowLayout(info, ctxTag, ctxTagW, actionFit, modText, modW,
@@ -252,6 +256,7 @@ final class KeybindTooltipRenderer {
             case FREE -> c.textSecondary();
             case SELF -> c.accent();
             case OTHER_SINGLE, BOUND -> c.success();
+            case COMBO -> c.warning();
             case CONFLICT -> c.danger();
         };
         String label = statusLabels.get(status);
@@ -344,6 +349,7 @@ final class KeybindTooltipRenderer {
             case FREE -> c.widgetBorder();
             case SELF -> c.accent();
             case OTHER_SINGLE, BOUND -> c.success();
+            case COMBO -> c.warning();
             case CONFLICT -> c.danger();
         };
     }
@@ -353,6 +359,7 @@ final class KeybindTooltipRenderer {
             case FREE -> "screen.newvisualkeybing.viewer.legend.free";
             case SELF -> "screen.newvisualkeybing.viewer.legend.self";
             case OTHER_SINGLE, BOUND -> "screen.newvisualkeybing.viewer.legend.other";
+            case COMBO -> "screen.newvisualkeybing.viewer.legend.combo";
             case CONFLICT -> "screen.newvisualkeybing.viewer.legend.conflict";
         };
     }

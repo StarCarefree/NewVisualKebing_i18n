@@ -312,11 +312,15 @@ final class KeybindKeyboardRenderer {
             int bh = font.lineHeight;
             int bx = x + w - bw - 2;
             int by = y + 2;
-            int chipColor = status == KeyBindingScanner.KeyStatus.CONFLICT ? c.danger() : c.accent();
+            int chipColor = status == KeyBindingScanner.KeyStatus.CONFLICT ? c.danger()
+                    : status == KeyBindingScanner.KeyStatus.COMBO ? c.warning()
+                    : c.accent();
             UITheme.fillRoundedRectFast(g, bx, by, bw, bh, bh / 2, chipColor);
             g.drawString(font, s, bx + 3, by + 1, 0xFFFFFFFF, false);
         } else if (w >= 16) {
-            int dotColor = status == KeyBindingScanner.KeyStatus.SELF ? c.accent() : c.success();
+            int dotColor = status == KeyBindingScanner.KeyStatus.SELF ? c.accent()
+                    : status == KeyBindingScanner.KeyStatus.COMBO ? c.warning()
+                    : c.success();
             UITheme.fillRoundedRectFast(g, x + w - 5, y + 3, 3, 3, 1, dotColor);
         }
     }

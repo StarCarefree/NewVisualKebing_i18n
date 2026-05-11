@@ -4,6 +4,7 @@ import com.github.newvisualkeybing.platform.services.IPlatformHelper;
 import net.minecraft.client.KeyMapping;
 import net.minecraftforge.client.settings.IKeyConflictContext;
 import net.minecraftforge.client.settings.KeyConflictContext;
+import net.minecraftforge.client.settings.KeyModifier;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.loading.FMLLoader;
 
@@ -43,5 +44,31 @@ public class ForgePlatformHelper implements IPlatformHelper {
         } catch (Throwable ignored) {
             return ConflictContext.UNIVERSAL;
         }
+    }
+
+    @Override
+    public InputModifier getKeyModifier(KeyMapping mapping) {
+        try {
+            return fromForgeModifier(mapping.getKeyModifier());
+        } catch (Throwable ignored) {
+            return InputModifier.NONE;
+        }
+    }
+
+    @Override
+    public InputModifier getDefaultKeyModifier(KeyMapping mapping) {
+        try {
+            return fromForgeModifier(mapping.getDefaultKeyModifier());
+        } catch (Throwable ignored) {
+            return InputModifier.NONE;
+        }
+    }
+
+    private static InputModifier fromForgeModifier(KeyModifier modifier) {
+        if (modifier == KeyModifier.CONTROL) return InputModifier.CONTROL;
+        if (modifier == KeyModifier.SHIFT) return InputModifier.SHIFT;
+        if (modifier == KeyModifier.ALT) return InputModifier.ALT;
+        if (modifier == KeyModifier.NONE) return InputModifier.NONE;
+        return InputModifier.UNKNOWN;
     }
 }
