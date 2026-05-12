@@ -67,7 +67,8 @@ final class KeybindProfilePanel {
             UITheme.fillRoundedRectFast(graphics, x + 8, rowY, WIDTH - 16, ROW_H - 2, 5, fill);
             if (active) graphics.fill(x + 10, rowY + 3, x + 12, rowY + ROW_H - 5, colors.accent());
             String label = fit(font, profileStore.compactProfileLabel(profile), WIDTH - 30);
-            graphics.drawString(font, label, x + 16, textY(font, rowY, ROW_H - 2),
+            int labelX = x + 8 + (WIDTH - 16 - font.width(label)) / 2;
+            graphics.drawString(font, label, labelX, textY(font, rowY, ROW_H - 2),
                     active ? colors.textPrimary() : colors.textSecondary(), false);
             rowY += ROW_H;
         }
@@ -112,12 +113,14 @@ final class KeybindProfilePanel {
         int nameX = x + 10;
         int contentY = y + 28;
         int nameY = contentY + 4;
-        if (nameBox != null && nameBox.mouseClicked(mouseX, mouseY, 0)) {
+        boolean inNameBg = inside(mouseX, mouseY, nameX - 2, nameY - 2, WIDTH - 16, NAME_BOX_H + 4);
+        if (nameBox != null && inNameBg) {
+            nameBox.mouseClicked(mouseX, mouseY, 0);
             nameBox.setFocused(true);
             if (profileStore.selectedProfile() != null) renaming = true;
             return true;
         }
-        if (!inside(mouseX, mouseY, nameX - 2, nameY - 2, WIDTH - 16, NAME_BOX_H + 4) && nameBox != null) {
+        if (!inNameBg && nameBox != null) {
             nameBox.setFocused(false);
         }
 
@@ -268,8 +271,9 @@ final class KeybindProfilePanel {
     }
 
     private void ensureNameBox(Font font, int x, int y) {
+        int textY = y + (NAME_BOX_H + 4 - font.lineHeight) / 2 - 2;
         if (nameBox == null) {
-            nameBox = new EditBox(font, x, y, WIDTH - 20, NAME_BOX_H,
+            nameBox = new EditBox(font, x, textY, WIDTH - 20, font.lineHeight + 2,
                     Component.translatable("screen.newvisualkeybing.viewer.profile.name"));
             nameBox.setHint(Component.translatable("screen.newvisualkeybing.viewer.profile.name_placeholder"));
             nameBox.setBordered(false);
@@ -277,7 +281,7 @@ final class KeybindProfilePanel {
             syncNameBox(true);
         }
         nameBox.setX(x);
-        nameBox.setY(y);
+        nameBox.setY(textY);
     }
 
     private void syncNameBox() {
