@@ -4,10 +4,9 @@ import com.github.newvisualkeybing.client.keyboard.KeybindComboStore;
 import com.github.newvisualkeybing.client.ui.MCButton;
 import com.github.newvisualkeybing.client.ui.UITheme;
 import com.mojang.blaze3d.platform.InputConstants;
-import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import com.github.newvisualkeybing.client.ui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -117,7 +116,7 @@ public class KeybindComboManageScreen extends Screen {
     private void beginAddCombo() {
         capture = new CaptureState();
         if (mappingSearchBox != null && mappingSearchBox.isFocused()) {
-            mappingSearchBox.setFocus(false);
+            mappingSearchBox.setFocused(false);
             this.setFocused(null);
         }
     }
@@ -128,9 +127,8 @@ public class KeybindComboManageScreen extends Screen {
     private int listW() { return width - listX() - 12; }
 
     @Override
-    public void render(PoseStack poseStack, int mouseX, int mouseY, float partialTick) {
-        GuiGraphics graphics = new GuiGraphics(poseStack);
-        renderBackground(poseStack);
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        renderBackground(graphics);
         var colors = UITheme.colors();
         graphics.fill(0, 0, width, height, UITheme.withAlpha(colors.panelBg(), 0xE6));
 
@@ -138,7 +136,7 @@ public class KeybindComboManageScreen extends Screen {
         renderList(graphics, mouseX, mouseY);
         renderFooter(graphics);
 
-        super.render(poseStack, mouseX, mouseY, partialTick);
+        super.render(graphics, mouseX, mouseY, partialTick);
 
         if (capture != null) renderCaptureOverlay(graphics);
         renderNotice(graphics);
@@ -192,7 +190,7 @@ public class KeybindComboManageScreen extends Screen {
         if (mouseX >= clearX && mouseX < clearX + clearSize
                 && mouseY >= clearY && mouseY < clearY + clearSize) {
             mappingSearchBox.setValue("");
-            mappingSearchBox.setFocus(true);
+            mappingSearchBox.setFocused(true);
             this.setFocused(mappingSearchBox);
             return true;
         }
@@ -513,7 +511,7 @@ public class KeybindComboManageScreen extends Screen {
                     mappingSearchBox.setValue("");
                     return true;
                 }
-                mappingSearchBox.setFocus(false);
+                mappingSearchBox.setFocused(false);
                 this.setFocused(null);
                 return true;
             }

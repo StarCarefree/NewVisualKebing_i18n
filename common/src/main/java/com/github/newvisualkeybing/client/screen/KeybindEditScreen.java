@@ -235,7 +235,7 @@ public class KeybindEditScreen extends Screen {
         if (mouseX >= clearXLocal && mouseX < clearXLocal + clearSize
                 && mouseY >= clearYLocal && mouseY < clearYLocal + clearSize) {
             searchBox.setValue("");
-            searchBox.setFocus(true);
+            searchBox.setFocused(true);
             this.setFocused(searchBox);
             return true;
         }
@@ -293,12 +293,12 @@ public class KeybindEditScreen extends Screen {
         boolean isWaiting = waitingMapping == ke.mapping;
         boolean isUnbound = ke.mapping.isUnbound();
         boolean conflict = isConflicting(ke.mapping, all);
-        boolean combo = isCombination(ke.mapping);
+        boolean comboStatus = isCombination(ke.mapping);
         boolean focusedTarget = focusVirtualKey != null && matchesFocus(ke.mapping);
-        KeybindComboStore.ComboBinding combo = KeybindComboStore.global().findByMapping(ke.mapping.getName());
-        boolean hasCombo = combo != null
-                && combo.secondKey != null
-                && combo.secondKey.equals(KeybindComboStore.currentKey(ke.mapping).getName());
+        KeybindComboStore.ComboBinding comboBinding = KeybindComboStore.global().findByMapping(ke.mapping.getName());
+        boolean hasCombo = comboBinding != null
+                && comboBinding.secondKey != null
+                && comboBinding.secondKey.equals(KeybindComboStore.currentKey(ke.mapping).getName());
         int yellow = KeybindKeyboardRenderer.COMBO_HIGHLIGHT_COLOR;
 
         if (focusedTarget) {
@@ -326,7 +326,7 @@ public class KeybindEditScreen extends Screen {
         } else if (isUnbound) {
             changeLabel = Component.translatable("screen.newvisualkeybing.viewer.unbound").getString();
         } else if (hasCombo) {
-            changeLabel = combo.displayFirst() + " + " + ke.mapping.getTranslatedKeyMessage().getString();
+            changeLabel = comboBinding.displayFirst() + " + " + ke.mapping.getTranslatedKeyMessage().getString();
         } else {
             changeLabel = ke.mapping.getTranslatedKeyMessage().getString();
         }
@@ -341,7 +341,7 @@ public class KeybindEditScreen extends Screen {
 
         int statusColor = focusedTarget ? colors.accent()
                 : conflict ? colors.dangerColor()
-                : combo ? colors.warning()
+                : comboStatus ? colors.warning()
                 : focusVirtualKey != null && isUnbound ? colors.accentLight()
                 : isUnbound ? colors.textMuted()
                 : hasCombo ? yellow
@@ -353,7 +353,7 @@ public class KeybindEditScreen extends Screen {
         int chTextY = y + (ENTRY_H - font.lineHeight) / 2;
         int chTextColor = focusedTarget ? colors.accentLight()
                 : isUnbound ? colors.textMuted() : conflict ? colors.dangerColor()
-                : combo || hasCombo ? yellow
+                : comboStatus || hasCombo ? yellow
                 : colors.textPrimary();
         graphics.drawString(font, changeLabel, chTextX, chTextY, chTextColor, false);
 
@@ -513,7 +513,7 @@ public class KeybindEditScreen extends Screen {
                     searchBox.setValue("");
                     return true;
                 }
-                searchBox.setFocus(false);
+                searchBox.setFocused(false);
                 this.setFocused(null);
                 return true;
             }
