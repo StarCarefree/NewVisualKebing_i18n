@@ -39,6 +39,11 @@ public class MCEditBox extends EditBox {
         return this;
     }
 
+    /** 1.20.1 lacks AbstractWidget.setHeight; height is a public field, so set it directly. */
+    public void setHeight(int height) {
+        this.height = height;
+    }
+
     public boolean clearAffordanceClicked(double mouseX, double mouseY) {
         return clearAffordance && !getValue().isEmpty()
                 && mouseX >= clearX && mouseX < clearX + clearSize

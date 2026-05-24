@@ -52,12 +52,37 @@ public final class KeybindComboStore {
     private final Path storeFile;
     private StoreData data = new StoreData();
     private volatile long version;
+    private final java.util.List<Runnable> reloadListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     private KeybindComboStore() {
         Path root = Minecraft.getInstance().options.getFile().toPath().toAbsolutePath().getParent();
         if (root == null) root = Path.of(".");
         this.storeFile = root.resolve("config").resolve(Constants.MOD_ID).resolve("combo_keybinds.json");
         load();
+        KeybindConfigWatcher.global().watch(
+                storeFile.getFileName().toString(),
+                this::serializeForCompare,
+                this::reloadFromDisk);
+    }
+
+    /** Serialize current state to a string identical to what {@link #save()} writes; used by the watcher. */
+    private synchronized String serializeForCompare() {
+        return GSON.toJson(data);
+    }
+
+    private void reloadFromDisk() {
+        load();
+        for (Runnable listener : reloadListeners) {
+            try { listener.run(); } catch (Throwable ignored) {}
+        }
+    }
+
+    public void addReloadListener(Runnable listener) {
+        if (listener != null) reloadListeners.add(listener);
+    }
+
+    public void removeReloadListener(Runnable listener) {
+        reloadListeners.remove(listener);
     }
 
     public synchronized void load() {
@@ -154,10 +179,77 @@ public final class KeybindComboStore {
         bumpVersion();
     }
 
+    /**
+     * Returns a deep-copied snapshot of every stored combo, suitable for serialization
+     * inside a {@link KeybindProfileStore} profile export.
+     */
+    public synchronized List<ComboBinding> snapshot() {
+        List<ComboBinding> copy = new ArrayList<>(data.combos.size());
+        for (ComboBinding source : data.combos) {
+            if (source == null) continue;
+            ComboBinding target = new ComboBinding();
+            target.mappingName = source.mappingName;
+            target.action = source.action;
+            target.category = source.category;
+            target.firstKey = source.firstKey;
+            target.secondKey = source.secondKey;
+            target.updatedAt = source.updatedAt;
+            copy.add(target);
+        }
+        return copy;
+    }
+
+    /**
+     * Replace the entire set of stored combos with the supplied list. Used by profile
+     * import so a profile fully describes the chord configuration alongside key bindings.
+     */
+    public synchronized void replaceCombos(List<ComboBinding> incoming) {
+        data.combos.clear();
+        if (incoming != null) {
+            for (ComboBinding source : incoming) {
+                if (source == null) continue;
+                ComboBinding target = new ComboBinding();
+                target.mappingName = source.mappingName;
+                target.action = source.action;
+                target.category = source.category;
+                target.firstKey = source.firstKey;
+                target.secondKey = source.secondKey;
+                target.updatedAt = source.updatedAt == null
+                        ? LocalDateTime.now().toString() : source.updatedAt;
+                data.combos.add(target);
+            }
+        }
+        normalize();
+        save();
+        bumpVersion();
+    }
+
+    /** Reload combos from disk; used by the hot-reload watcher. */
+    public synchronized void reload() {
+        load();
+    }
+
     public synchronized int size() {
         return data.combos.size();
     }
 
+
+    /**
+     * Returns the distinct set of trigger ({@code secondKey}) keys whose combos use the given
+     * key as their modifier ({@code firstKey}). Used to drive precise re-sync when a modifier
+     * is pressed or released, so dispatch never has to walk every combo.
+     */
+    public synchronized Set<InputConstants.Key> triggersForFirstKey(InputConstants.Key firstKey) {
+        if (firstKey == null || firstKey == InputConstants.UNKNOWN) return Collections.emptySet();
+        String name = firstKey.getName();
+        Set<InputConstants.Key> result = new LinkedHashSet<>();
+        for (ComboBinding combo : data.combos) {
+            if (!isComplete(combo)) continue;
+            if (!sameInput(combo.firstKey, name)) continue;
+            parseInput(combo.secondKey).ifPresent(result::add);
+        }
+        return result;
+    }
 
     /** Returns the set of virtual key codes that participate in any combo. */
     public synchronized Set<Integer> participantVirtualKeys() {

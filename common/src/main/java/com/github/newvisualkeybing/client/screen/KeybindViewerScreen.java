@@ -287,7 +287,7 @@ public class KeybindViewerScreen extends FixedScaleScreen {
     }
 
     @Override
-    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+    public void renderBackground(GuiGraphics g) {
     }
 
     @Override
@@ -1143,7 +1143,7 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
         applyFixedScaleMetrics();
         mouseX = fixedMouseX(mouseX);
         mouseY = fixedMouseY(mouseY);
@@ -1173,7 +1173,7 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
                 return true;
             }
         }
-        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        return super.mouseScrolled(mouseX, mouseY, scrollY);
     }
 
     static boolean inside(double mouseX, double mouseY, int x, int y, int w, int h) {
