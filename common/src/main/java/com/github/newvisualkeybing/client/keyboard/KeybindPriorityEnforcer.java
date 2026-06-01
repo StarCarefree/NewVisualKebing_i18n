@@ -8,7 +8,9 @@ import net.minecraft.client.Minecraft;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
@@ -51,6 +53,28 @@ public final class KeybindPriorityEnforcer {
             lookupFailed = true;
             return null;
         }
+    }
+
+    /**
+     * Collect every NON-chord mapping currently bound to {@code key} by scanning the live
+     * key-mapping list directly. This is the basis of the full-key no-conflict dispatch: when a key
+     * is pressed, <em>all</em> plain single-key bindings on it are activated together, instead of
+     * letting only the single {@code KeyMapping.MAP} winner through.
+     */
+    public static List<KeyMapping> singleKeyMappings(InputConstants.Key key) {
+        List<KeyMapping> result = new ArrayList<>();
+        if (key == null || key == InputConstants.UNKNOWN) return result;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.options == null) return result;
+        KeybindComboStore combos = KeybindComboStore.global();
+        for (KeyMapping mapping : mc.options.keyMappings) {
+            InputConstants.Key bound = ((KeyMappingAccessor) (Object) mapping).newvisualkeybing$getKey();
+            if (bound == null || bound == InputConstants.UNKNOWN) continue;
+            if (bound.getType() != key.getType() || bound.getValue() != key.getValue()) continue;
+            if (combos.matchesCurrentCombo(mapping)) continue;
+            result.add(mapping);
+        }
+        return result;
     }
 
     public static void applyPriority() {

@@ -910,7 +910,8 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         for (Map.Entry<String, String> entry : scanner.getAllRegisteredMods().entrySet()) {
             if (query.isBlank()
                     || entry.getValue().toLowerCase(Locale.ROOT).contains(query)
-                    || entry.getKey().toLowerCase(Locale.ROOT).contains(query)) {
+                    || entry.getKey().toLowerCase(Locale.ROOT).contains(query)
+                    || com.github.newvisualkeybing.client.keyboard.Pinyin.matches(entry.getValue(), query)) {
                 entries.add(entry);
             }
         }
@@ -963,6 +964,11 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         mouseX = fixedMouseX(mouseX);
         mouseY = fixedMouseY(mouseY);
         if (quickEdit.isOpen()) return quickEdit.mouseClicked(mouseX, mouseY, button);
+        // Blur the profile name box whenever the click lands outside the profile panel, so it can
+        // never stay focused alongside the search box (which would route typing to both).
+        boolean inProfilePanel = profilePanelOpen && width >= COMPACT_WIDTH_THRESHOLD
+                && profilePanel.containsClick(mouseX, mouseY, BODY_PAD, contentTop, contentBottom - contentTop);
+        if (!inProfilePanel) profilePanel.releaseFocus();
         if (handleSearchClearClick(mouseX, mouseY)) return true;
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
         if (button != 0) return false;

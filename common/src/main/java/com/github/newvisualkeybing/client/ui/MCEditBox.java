@@ -50,6 +50,27 @@ public class MCEditBox extends EditBox {
                 && mouseY >= clearY && mouseY < clearY + clearSize;
     }
 
+    /**
+     * Self-manage focus on click. Vanilla 1.20.1 {@link EditBox} no longer toggles its own focus
+     * in {@code mouseClicked}, leaving it to the container — but this mod hosts several edit boxes,
+     * some of which are not registered screen children, so without this an out-of-bounds click
+     * never clears focus (the box stays focused) and multiple boxes can be focused at once (text
+     * routed to the wrong one). Focusing only when the click lands inside, and clearing otherwise,
+     * keeps exactly one box focused and lets clicks elsewhere blur it.
+     */
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (!isVisible()) return false;
+        boolean inside = mouseX >= getX() && mouseX < getX() + getWidth()
+                && mouseY >= getY() && mouseY < getY() + getHeight();
+        if (!inside) {
+            if (isFocused()) setFocused(false);
+            return false;
+        }
+        setFocused(true);
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
     @Override
     public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderFrame++;

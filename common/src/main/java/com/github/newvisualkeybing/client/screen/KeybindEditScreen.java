@@ -45,7 +45,8 @@ public class KeybindEditScreen extends FixedScaleScreen {
     private MCButton comboButton;
     private MCButton backButton;
     private final KeybindProfileStore profileStore = KeybindProfileStore.global();
-    private final KeybindProfilePanel profilePanel = new KeybindProfilePanel(profileStore, this::rebuildEntries, this::showNotice);
+    private final KeybindProfilePanel profilePanel = new KeybindProfilePanel(
+            profileStore, this::rebuildEntries, this::showNotice, this::releaseSearchFocus);
     private final KeybindPriorityControls priorityControls = new KeybindPriorityControls(profileStore);
     private final Runnable profileReloadListener = this::onProfilesReloaded;
     private final Runnable comboReloadListener = this::onCombosReloaded;
@@ -152,9 +153,13 @@ public class KeybindEditScreen extends FixedScaleScreen {
         String q = searchBox != null ? searchBox.getValue().toLowerCase() : "";
         grouped.forEach((cat, mappings) -> {
             List<KeyMapping> filtered = q.isBlank() ? mappings :
-                    mappings.stream().filter(km ->
-                            Component.translatable(km.getName()).getString().toLowerCase().contains(q)
-                                    || cat.toLowerCase().contains(q)).toList();
+                    mappings.stream().filter(km -> {
+                        String name = Component.translatable(km.getName()).getString();
+                        return name.toLowerCase().contains(q)
+                                || cat.toLowerCase().contains(q)
+                                || com.github.newvisualkeybing.client.keyboard.Pinyin.matches(name, q)
+                                || com.github.newvisualkeybing.client.keyboard.Pinyin.matches(cat, q);
+                    }).toList();
             if (!filtered.isEmpty()) {
                 entries.add(new CategoryEntry(cat));
                 for (KeyMapping km : filtered) entries.add(new KeyEntry(km));
@@ -229,6 +234,15 @@ public class KeybindEditScreen extends FixedScaleScreen {
         int titleRight = backButton == null ? width - 12 : backButton.getX() - 8;
         graphics.drawString(font, KeybindViewerScreen.fitToWidth(font, title, Math.max(40, titleRight - titleX)),
                 titleX, titleY, colors.textPrimary(), false);
+    }
+
+    private void releaseSearchFocus() {
+        if (searchBox != null && searchBox.isFocused()) {
+            searchBox.setFocused(false);
+        }
+        if (this.getFocused() == searchBox) {
+            this.setFocused(null);
+        }
     }
 
     private boolean handleSearchClearClick(double mouseX, double mouseY) {
@@ -429,6 +443,11 @@ public class KeybindEditScreen extends FixedScaleScreen {
                 handleCapturePress(InputConstants.Type.MOUSE.getOrCreate(button));
             }
             return true;
+        }
+        // Blur the profile name box when clicking outside the profile panel so it never stays
+        // focused alongside the search box (which would route typing to both boxes at once).
+        if (!profilePanel.containsClick(mouseX, mouseY, 8, listTop(), listHeight())) {
+            profilePanel.releaseFocus();
         }
         if (handleSearchClearClick(mouseX, mouseY)) return true;
         if (super.mouseClicked(mouseX, mouseY, button)) return true;

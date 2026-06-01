@@ -459,7 +459,10 @@ public class KeyBindingScanner {
                 || info.categoryKey().toLowerCase(Locale.ROOT).contains(query)
                 || info.modId().toLowerCase(Locale.ROOT).contains(query)
                 || info.modName().toLowerCase(Locale.ROOT).contains(query)
-                || info.currentKeyName().toLowerCase(Locale.ROOT).contains(query);
+                || info.currentKeyName().toLowerCase(Locale.ROOT).contains(query)
+                || Pinyin.matches(info.actionName(), query)
+                || Pinyin.matches(info.categoryName(), query)
+                || Pinyin.matches(info.modName(), query);
     }
 
 

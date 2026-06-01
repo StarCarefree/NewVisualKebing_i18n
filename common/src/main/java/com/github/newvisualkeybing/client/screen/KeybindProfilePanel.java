@@ -216,6 +216,20 @@ final class KeybindProfilePanel {
         return true;
     }
 
+    /** Whether a click at the given screen coordinates lands within this panel's bounds. */
+    boolean containsClick(double mouseX, double mouseY, int x, int y, int h) {
+        return inside(mouseX, mouseY, x, y, WIDTH, h);
+    }
+
+    /** Blur the name box; called by the host screen when a click lands outside this panel. */
+    void releaseFocus() {
+        if (nameBox != null && nameBox.isFocused()) {
+            nameBox.setFocused(false);
+            renaming = false;
+            syncNameBox(true);
+        }
+    }
+
     boolean charTyped(char codePoint, int modifiers) {
         return nameBox != null && nameBox.isFocused() && nameBox.charTyped(codePoint, modifiers);
     }
