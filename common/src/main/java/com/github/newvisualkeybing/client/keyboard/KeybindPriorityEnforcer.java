@@ -2,6 +2,7 @@ package com.github.newvisualkeybing.client.keyboard;
 
 import com.github.newvisualkeybing.Constants;
 import com.github.newvisualkeybing.mixin.KeyMappingAccessor;
+import com.github.newvisualkeybing.platform.Services;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -9,6 +10,7 @@ import net.minecraft.client.Minecraft;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +75,34 @@ public final class KeybindPriorityEnforcer {
             if (bound.getType() != key.getType() || bound.getValue() != key.getValue()) continue;
             if (combos.matchesCurrentCombo(mapping)) continue;
             result.add(mapping);
+        }
+        return result;
+    }
+
+    /**
+     * Resolve which of {@code candidates} (all bound to the same key) should actually fire, by
+     * priority tier with scene-aware fall-through:
+     * <ul>
+     *   <li>bindings of the <em>same</em> priority all fire together;</li>
+     *   <li>only the highest priority tier fires; lower tiers yield to it;</li>
+     *   <li>but a higher tier that cannot trigger in the current scene (its conflict context is
+     *       inactive) is skipped so a lower tier that <em>can</em> trigger fires instead — the
+     *       higher tier never silently blocks a usable lower one.</li>
+     * </ul>
+     * Returns the subset of {@code candidates} to activate (every member of the winning tier).
+     */
+    public static List<KeyMapping> resolveByPriority(List<KeyMapping> candidates) {
+        if (candidates.size() <= 1) return candidates;
+        Integer best = null;
+        for (KeyMapping km : candidates) {
+            if (!Services.PLATFORM.isContextActive(km)) continue;
+            int priority = KeybindProfileStore.globalPriorityOf(km.getName());
+            if (best == null || priority > best) best = priority;
+        }
+        if (best == null) return Collections.emptyList();
+        List<KeyMapping> result = new ArrayList<>();
+        for (KeyMapping km : candidates) {
+            if (KeybindProfileStore.globalPriorityOf(km.getName()) == best) result.add(km);
         }
         return result;
     }

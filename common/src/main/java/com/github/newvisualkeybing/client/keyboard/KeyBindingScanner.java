@@ -47,7 +47,8 @@ public class KeyBindingScanner {
             InputModifier defaultModifier,
             String baseKeyName,
             String currentKeyName,
-            String defaultKeyName
+            String defaultKeyName,
+            boolean conflictIgnored
     ) {
         public String contextDescription() {
             return switch (conflictContext) {
@@ -141,7 +142,8 @@ public class KeyBindingScanner {
                     defaultModifier,
                     baseKeyName,
                     displayKeyName(modifier, baseKeyName),
-                    displayKeyName(defaultModifier, defaultBaseKeyName)
+                    displayKeyName(defaultModifier, defaultBaseKeyName),
+                    KeybindProfileStore.globalConflictIgnored(actionKey)
             );
 
             if (key.getType() == InputConstants.Type.MOUSE) {
@@ -475,8 +477,11 @@ public class KeyBindingScanner {
             return infos.get(0).self() ? KeyStatus.SELF : KeyStatus.OTHER_SINGLE;
         }
 
+        // Bindings manually marked as ignore-in-conflict never contribute to a CONFLICT verdict.
         for (int i = 0; i < infos.size(); i++) {
+            if (infos.get(i).conflictIgnored()) continue;
             for (int j = i + 1; j < infos.size(); j++) {
+                if (infos.get(j).conflictIgnored()) continue;
                 if (comboAware && !sameActivator(infos.get(i), infos.get(j))) continue;
                 ConflictContext ci = infos.get(i).conflictContext();
                 ConflictContext cj = infos.get(j).conflictContext();
@@ -484,10 +489,11 @@ public class KeyBindingScanner {
             }
         }
         if (comboAware && hasCombo) return KeyStatus.COMBO;
-        boolean hasSelf = infos.stream().anyMatch(KeyBindingInfo::self);
-        boolean hasOther = infos.stream().anyMatch(info -> !info.self());
+        boolean hasSelf = infos.stream().anyMatch(info -> info.self() && !info.conflictIgnored());
+        boolean hasOther = infos.stream().anyMatch(info -> !info.self() && !info.conflictIgnored());
         if (hasSelf && hasOther) return KeyStatus.CONFLICT;
-        return hasSelf ? KeyStatus.SELF : KeyStatus.OTHER_SINGLE;
+        boolean anySelf = infos.stream().anyMatch(KeyBindingInfo::self);
+        return anySelf ? KeyStatus.SELF : KeyStatus.OTHER_SINGLE;
     }
 
     private static boolean hasStoredCombo(KeyBindingInfo info) {

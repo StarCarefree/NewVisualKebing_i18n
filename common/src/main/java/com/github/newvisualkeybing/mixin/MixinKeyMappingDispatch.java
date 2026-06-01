@@ -9,20 +9,24 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 
 /**
- * Full-key no-conflict dispatch. Vanilla routes a key event to a single {@code KeyMapping.MAP}
- * winner, so when several actions share a key only one fires. This mixin instead activates
- * <em>every</em> binding assigned to the pressed key, distinguishing single keys from chords:
+ * Full-key no-conflict dispatch with priority tiers. Vanilla routes a key event to a single
+ * {@code KeyMapping.MAP} winner, so when several actions share a key only one fires. This mixin
+ * instead activates the bindings assigned to the pressed key, distinguishing single keys from
+ * chords and honouring per-binding priority:
  * <ul>
- *   <li>all plain single-key bindings on the key fire together;</li>
- *   <li>all chord bindings whose modifier is held fire together;</li>
- *   <li>when a chord on the key is active, that key's plain single-key bindings are suppressed
- *       (so e.g. {@code Ctrl+G} runs the chord, not plain {@code G}); the chord's modifier key is
- *       <em>not</em> suppressed, so the modifier's own single binding still fires.</li>
+ *   <li>chords whose modifier is held are considered first; if any is active, the key's plain
+ *       single-key bindings are suppressed (so {@code Ctrl+G} runs the chord, not plain {@code G});
+ *       the chord's modifier key is <em>not</em> suppressed, so the modifier's own binding fires;</li>
+ *   <li>within the chosen category, bindings of equal priority all fire together; only the highest
+ *       priority tier fires, but a tier that cannot trigger in the current scene is skipped so a
+ *       lower tier that can fires instead (see {@link KeybindPriorityEnforcer#resolveByPriority}).</li>
  * </ul>
  */
 @Mixin(KeyMapping.class)
@@ -40,14 +44,12 @@ public class MixinKeyMappingDispatch {
             return;
         }
 
-        if (newvisualkeybing$anyActive(matches)) {
-            for (KeybindComboStore.Match match : matches) {
-                if (match.active()) newvisualkeybing$incrementClick(match.mapping());
-            }
-        } else {
-            for (KeyMapping single : singles) {
-                newvisualkeybing$incrementClick(single);
-            }
+        List<KeyMapping> activeCombos = newvisualkeybing$activeComboMappings(matches);
+        List<KeyMapping> winners = activeCombos.isEmpty()
+                ? KeybindPriorityEnforcer.resolveByPriority(singles)
+                : KeybindPriorityEnforcer.resolveByPriority(activeCombos);
+        for (KeyMapping winner : winners) {
+            newvisualkeybing$incrementClick(winner);
         }
         ci.cancel();
     }
@@ -88,26 +90,39 @@ public class MixinKeyMappingDispatch {
     }
 
     /**
-     * (Re)compute the {@code isDown} state for one trigger key: every chord whose modifier is held
-     * is activated, and the key's plain single-key bindings are activated only when no chord
-     * claimed the key.
+     * (Re)compute the {@code isDown} state for one trigger key. When a chord is active it claims the
+     * key (single keys suppressed); otherwise the single keys take it. Within whichever category
+     * wins, {@link KeybindPriorityEnforcer#resolveByPriority} decides the firing set by priority
+     * tier (same tier all fire, higher tier wins, scene-aware fall-through).
      */
     private static void newvisualkeybing$syncTrigger(List<KeybindComboStore.Match> matches,
                                                      List<KeyMapping> singles, boolean held) {
-        boolean comboActive = held && newvisualkeybing$anyActive(matches);
-        for (KeybindComboStore.Match match : matches) {
-            match.mapping().setDown(held && match.active());
+        if (!held) {
+            for (KeybindComboStore.Match match : matches) match.mapping().setDown(false);
+            for (KeyMapping single : singles) single.setDown(false);
+            return;
         }
-        for (KeyMapping single : singles) {
-            single.setDown(held && !comboActive);
+        List<KeyMapping> activeCombos = newvisualkeybing$activeComboMappings(matches);
+        if (!activeCombos.isEmpty()) {
+            Set<KeyMapping> winners = new HashSet<>(KeybindPriorityEnforcer.resolveByPriority(activeCombos));
+            for (KeybindComboStore.Match match : matches) {
+                match.mapping().setDown(winners.contains(match.mapping()));
+            }
+            for (KeyMapping single : singles) single.setDown(false);
+        } else {
+            for (KeybindComboStore.Match match : matches) match.mapping().setDown(false);
+            Set<KeyMapping> winners = new HashSet<>(KeybindPriorityEnforcer.resolveByPriority(singles));
+            for (KeyMapping single : singles) single.setDown(winners.contains(single));
         }
     }
 
-    private static boolean newvisualkeybing$anyActive(List<KeybindComboStore.Match> matches) {
+    /** Mappings of every chord on this trigger whose modifier is currently held. */
+    private static List<KeyMapping> newvisualkeybing$activeComboMappings(List<KeybindComboStore.Match> matches) {
+        List<KeyMapping> result = new ArrayList<>();
         for (KeybindComboStore.Match match : matches) {
-            if (match.active()) return true;
+            if (match.active()) result.add(match.mapping());
         }
-        return false;
+        return result;
     }
 
     private static boolean newvisualkeybing$sameKey(InputConstants.Key a, InputConstants.Key b) {

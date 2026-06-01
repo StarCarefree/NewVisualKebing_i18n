@@ -130,6 +130,8 @@
   "screen.newvisualkeybing.viewer.profile.reloaded": "已从磁盘重新加载 %s",
   "screen.newvisualkeybing.viewer.profile.combos_reloaded": "已从磁盘重新加载组合按键",
   "screen.newvisualkeybing.viewer.priority.changed": "%s 优先级: %s",
+  "screen.newvisualkeybing.viewer.conflict_ignore.on": "%s 已标记为不计入冲突",
+  "screen.newvisualkeybing.viewer.conflict_ignore.off": "%s 已恢复冲突检测",
   "screen.newvisualkeybing.viewer.combo.open": "组合按键",
   "screen.newvisualkeybing.viewer.combo.title": "组合按键管理",
   "screen.newvisualkeybing.viewer.combo.search": "搜索动作或按键组合",

@@ -86,7 +86,7 @@ public class KeybindViewerScreen extends FixedScaleScreen {
     private boolean modPanelOpen;
     private boolean profilePanelOpen;
     private String selectedModId;
-    private String modSearchQuery = "";
+    private MCEditBox modSearchBox;
     private int modScrollOffset;
 
     private float keyScale;
@@ -129,7 +129,6 @@ public class KeybindViewerScreen extends FixedScaleScreen {
     private final int[] legendLabelWidths = new int[5];
     private String hintLabel;
     private String modPanelTitle;
-    private String modSearchPlaceholder;
     private String clearModLabel;
 
     public KeybindViewerScreen(Screen parent) {
@@ -177,6 +176,20 @@ public class KeybindViewerScreen extends FixedScaleScreen {
                 .withClearAffordance(true);
         searchBox.setResponder(value -> markFiltersDirty());
         addRenderableWidget(searchBox);
+
+        // Mod-panel search uses the same MCEditBox paradigm as the toolbar search and the profile
+        // name box, so all three share one focus model. Positioned/shown during mod-panel render.
+        modSearchBox = new MCEditBox(font, BODY_PAD + PANEL_PAD, contentTop + PANEL_CONTENT_TOP + 4,
+                MOD_PANEL_W - PANEL_PAD * 2, 18,
+                Component.translatable("screen.newvisualkeybing.viewer.mod_search"))
+                .withPlaceholder(Component.translatable("screen.newvisualkeybing.viewer.mod_search"))
+                .withClearAffordance(true);
+        modSearchBox.setResponder(value -> modScrollOffset = 0);
+        modSearchBox.setVisible(false);
+        addRenderableWidget(modSearchBox);
+
+        // The profile name box is also an MCEditBox child, sharing the same focus model.
+        addRenderableWidget(profilePanel.createNameBox(font));
 
         layoutButton = MCButton.create(xLayout, btnY, btnLayoutW, btnH,
                 layoutLabel(currentStyle), button -> {
@@ -272,7 +285,6 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         }
         hintLabel = Component.translatable("screen.newvisualkeybing.viewer.hint").getString();
         modPanelTitle = Component.translatable("screen.newvisualkeybing.viewer.mods").getString();
-        modSearchPlaceholder = Component.translatable("screen.newvisualkeybing.viewer.mod_search").getString();
         clearModLabel = Component.translatable("screen.newvisualkeybing.viewer.clear_mod").getString();
     }
 
@@ -309,9 +321,16 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         renderHeaderBar(g);
         renderToolbar(g, fixedMouseX, fixedMouseY);
 
-        if (modPanelOpen && width >= COMPACT_WIDTH_THRESHOLD) {
+        boolean modSearchVisible = modPanelOpen && width >= COMPACT_WIDTH_THRESHOLD;
+        boolean profileVisible = profilePanelOpen && width >= COMPACT_WIDTH_THRESHOLD;
+        blurIfHidden(modSearchBox, modSearchVisible);
+        blurIfHidden(profilePanel.nameBox(), profileVisible);
+        if (modSearchBox != null) modSearchBox.setVisible(modSearchVisible);
+        if (profilePanel.nameBox() != null) profilePanel.nameBox().setVisible(profileVisible);
+
+        if (modSearchVisible) {
             renderModPanel(g, fixedMouseX, fixedMouseY);
-        } else if (profilePanelOpen && width >= COMPACT_WIDTH_THRESHOLD) {
+        } else if (profileVisible) {
             int x = BODY_PAD;
             int y = contentTop;
             int h = contentBottom - contentTop;
@@ -462,13 +481,13 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         int fieldX = x + PANEL_PAD;
         int fieldW = w - PANEL_PAD * 2;
         int searchY = contentY + 4;
-        UITheme.fillRoundedRectFast(g, fieldX, searchY, fieldW, 18, 6, c.inputBg());
-        UITheme.drawRoundedBorderFast(g, fieldX, searchY, fieldW, 18, 6, c.widgetBorder());
-        String display = modSearchQuery.isBlank()
-                ? modSearchPlaceholder
-                : modSearchQuery;
-        g.drawString(font, display, fieldX + 6, searchY + 5,
-                modSearchQuery.isBlank() ? c.textMuted() : c.textPrimary(), false);
+        // The search field is a real MCEditBox (rendered by super.render); just position it here.
+        if (modSearchBox != null) {
+            modSearchBox.setX(fieldX);
+            modSearchBox.setY(searchY);
+            modSearchBox.setWidth(fieldW);
+            modSearchBox.setHeight(18);
+        }
 
         int listY = searchY + 26;
         int clearY = y + h - PANEL_PAD - ACTION_BTN_H;
@@ -718,6 +737,21 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
                 info.actionName()).getString());
     }
 
+    private void toggleConflictIgnore(KeyBindingScanner.KeyBindingInfo info) {
+        net.minecraft.client.KeyMapping target = null;
+        for (net.minecraft.client.KeyMapping km : minecraft.options.keyMappings) {
+            if (km.getName().equals(info.translationKey())) { target = km; break; }
+        }
+        if (target == null) return;
+        boolean ignored = profileStore.toggleConflictIgnored(target);
+        scanner.scan();
+        refreshFilters();
+        showNotice(Component.translatable(ignored
+                ? "screen.newvisualkeybing.viewer.conflict_ignore.on"
+                : "screen.newvisualkeybing.viewer.conflict_ignore.off",
+                info.actionName()).getString());
+    }
+
     private void changeMappingPriority(KeyBindingScanner.KeyBindingInfo info, int delta) {
         net.minecraft.client.KeyMapping target = null;
         for (net.minecraft.client.KeyMapping km : minecraft.options.keyMappings) {
@@ -900,8 +934,28 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         return filter == null || filter.contains(virtualKey);
     }
 
+    private String modSearchText() {
+        return modSearchBox == null ? "" : modSearchBox.getValue();
+    }
+
+    private void blurSearchBoxIfOutside(MCEditBox box, double mouseX, double mouseY) {
+        if (box == null || !box.isVisible() || !box.isFocused()) return;
+        if (!inside(mouseX, mouseY, box.getX(), box.getY(), box.getWidth(), box.getHeight())) {
+            box.setFocused(false);
+            if (getFocused() == box) setFocused(null);
+        }
+    }
+
+    /** Blur a box that is about to be hidden, so it cannot keep focus/keyboard input off-screen. */
+    private void blurIfHidden(MCEditBox box, boolean willBeVisible) {
+        if (box != null && box.isVisible() && !willBeVisible && box.isFocused()) {
+            box.setFocused(false);
+            if (getFocused() == box) setFocused(null);
+        }
+    }
+
     private List<Map.Entry<String, String>> filteredModEntries() {
-        String query = modSearchQuery.toLowerCase(Locale.ROOT);
+        String query = modSearchText().toLowerCase(Locale.ROOT);
         long version = scanner.version();
         if (version == cachedModEntriesVersion && query.equals(cachedModEntriesQuery)) {
             return cachedModEntries;
@@ -922,7 +976,7 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
     }
 
     private List<ModRow> filteredModRows(int fieldW) {
-        String query = modSearchQuery.toLowerCase(Locale.ROOT);
+        String query = modSearchText().toLowerCase(Locale.ROOT);
         long version = scanner.version();
         if (version == cachedModRowsVersion
                 && query.equals(cachedModRowsQuery)
@@ -964,12 +1018,22 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         mouseX = fixedMouseX(mouseX);
         mouseY = fixedMouseY(mouseY);
         if (quickEdit.isOpen()) return quickEdit.mouseClicked(mouseX, mouseY, button);
-        // Blur the profile name box whenever the click lands outside the profile panel, so it can
-        // never stay focused alongside the search box (which would route typing to both).
-        boolean inProfilePanel = profilePanelOpen && width >= COMPACT_WIDTH_THRESHOLD
-                && profilePanel.containsClick(mouseX, mouseY, BODY_PAD, contentTop, contentBottom - contentTop);
-        if (!inProfilePanel) profilePanel.releaseFocus();
+        // Keep exactly one text box focused: blur any whose bounds this click is outside of. The
+        // container's click loop stops at the first handling child, so it cannot be relied on to
+        // blur a box that sits after the clicked one in the children list. Covers the toolbar
+        // search, the mod-panel search, and the profile name box (all MCEditBox children now).
+        blurSearchBoxIfOutside(searchBox, mouseX, mouseY);
+        blurSearchBoxIfOutside(modSearchBox, mouseX, mouseY);
+        blurSearchBoxIfOutside(profilePanel.nameBox(), mouseX, mouseY);
         if (handleSearchClearClick(mouseX, mouseY)) return true;
+        if (modSearchBox != null && modSearchBox.isVisible()
+                && modSearchBox.clearAffordanceClicked(mouseX, mouseY)) {
+            modSearchBox.setValue("");
+            modSearchBox.setFocused(true);
+            this.setFocused(modSearchBox);
+            modScrollOffset = 0;
+            return true;
+        }
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
         if (button != 0) return false;
 
@@ -1002,6 +1066,11 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             KeybindDetailPanel.PriorityHit priorityHit = detailPanel.getRowPriorityHit(mouseX, mouseY);
             if (priorityHit != null) {
                 changeMappingPriority(priorityHit.info(), priorityHit.delta());
+                return true;
+            }
+            KeyBindingScanner.KeyBindingInfo ignoreInfo = detailPanel.getRowIgnoreHit(mouseX, mouseY);
+            if (ignoreInfo != null) {
+                toggleConflictIgnore(ignoreInfo);
                 return true;
             }
             KeyBindingScanner.KeyBindingInfo rowInfo = detailPanel.getRowUnbindHit(mouseX, mouseY);
@@ -1069,10 +1138,7 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         int rowH = 18;
         int visibleRows = Math.max(1, (comboToggleY - ACTION_BTN_GAP - listY) / rowH);
 
-        if (inside(mouseX, mouseY, fieldX, searchY, fieldW, 18)) {
-            modSearchQuery = "";
-            return true;
-        }
+        // The search field itself is an MCEditBox handled by super.mouseClicked; nothing to do here.
 
         List<Map.Entry<String, String>> mods = filteredModEntries();
         int rowY = listY;
@@ -1115,12 +1181,8 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
         applyFixedScaleMetrics();
-        if (profilePanelOpen && width >= COMPACT_WIDTH_THRESHOLD && profilePanel.charTyped(codePoint, modifiers)) return true;
-        if (modPanelOpen && width >= COMPACT_WIDTH_THRESHOLD && !searchBox.isFocused() && codePoint >= 32) {
-            modSearchQuery += codePoint;
-            modScrollOffset = 0;
-            return true;
-        }
+        // All text boxes (toolbar search, mod search, profile name) are focusable child widgets now,
+        // so super.charTyped routes to whichever is focused.
         return super.charTyped(codePoint, modifiers);
     }
 
@@ -1129,21 +1191,19 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         applyFixedScaleMetrics();
         if (quickEdit.isOpen()) return quickEdit.keyPressed(keyCode, scanCode, modifiers);
         if (profilePanelOpen && width >= COMPACT_WIDTH_THRESHOLD && profilePanel.keyPressed(keyCode, scanCode, modifiers)) return true;
-        if (modPanelOpen && width >= COMPACT_WIDTH_THRESHOLD && !searchBox.isFocused()) {
-            if (keyCode == 259 && !modSearchQuery.isEmpty()) {
-                modSearchQuery = modSearchQuery.substring(0, modSearchQuery.length() - 1);
+        if (keyCode == 256) {
+            // Escape clears, then blurs, whichever search box is focused.
+            MCEditBox focused = searchBox != null && searchBox.isFocused() ? searchBox
+                    : modSearchBox != null && modSearchBox.isFocused() ? modSearchBox : null;
+            if (focused != null) {
+                if (!focused.getValue().isEmpty()) {
+                    focused.setValue("");
+                    return true;
+                }
+                focused.setFocused(false);
+                this.setFocused(null);
                 return true;
             }
-            if (keyCode == 256) modSearchQuery = "";
-        }
-        if (keyCode == 256 && searchBox != null && searchBox.isFocused()) {
-            if (!searchBox.getValue().isEmpty()) {
-                searchBox.setValue("");
-                return true;
-            }
-            searchBox.setFocused(false);
-            this.setFocused(null);
-            return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }

@@ -1,6 +1,7 @@
 package com.github.newvisualkeybing.platform.services;
 
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
 
 public interface IPlatformHelper {
 
@@ -20,6 +21,23 @@ public interface IPlatformHelper {
     
     default ConflictContext getConflictContext(KeyMapping mapping) {
         return ConflictContext.UNIVERSAL;
+    }
+
+    /**
+     * Whether {@code mapping}'s conflict context can fire in the current scene right now. Used by
+     * priority resolution to fall through from a higher-priority binding that cannot trigger here
+     * (e.g. a GUI-only binding while in-game) to a lower-priority one that can, instead of letting
+     * the inactive high-priority binding block it. The default derives activeness from the
+     * conflict context and whether a screen is open; platforms with a richer context API override.
+     */
+    default boolean isContextActive(KeyMapping mapping) {
+        Minecraft mc = Minecraft.getInstance();
+        boolean screenOpen = mc != null && mc.screen != null;
+        return switch (getConflictContext(mapping)) {
+            case IN_GAME -> !screenOpen;
+            case GUI -> screenOpen;
+            case UNIVERSAL, UNKNOWN -> true;
+        };
     }
 
     default InputModifier getKeyModifier(KeyMapping mapping) {

@@ -97,6 +97,12 @@ public class KeybindEditScreen extends FixedScaleScreen {
         searchBox.setResponder(value -> rebuildEntries());
         addRenderableWidget(searchBox);
 
+        // The profile name box is a focusable child widget sharing the same focus model as the
+        // search box; the profile panel is always shown on this screen, so it stays visible.
+        MCEditBox nameBox = profilePanel.createNameBox(font);
+        nameBox.setVisible(true);
+        addRenderableWidget(nameBox);
+
         backButton = MCButton.create(xBack, 8, backW, 20,
                 Component.translatable("screen.newvisualkeybing.viewer.back"), b -> onClose());
         addRenderableWidget(backButton);
@@ -444,11 +450,10 @@ public class KeybindEditScreen extends FixedScaleScreen {
             }
             return true;
         }
-        // Blur the profile name box when clicking outside the profile panel so it never stays
-        // focused alongside the search box (which would route typing to both boxes at once).
-        if (!profilePanel.containsClick(mouseX, mouseY, 8, listTop(), listHeight())) {
-            profilePanel.releaseFocus();
-        }
+        // Keep exactly one text box focused: blur whichever the click lands outside of (the
+        // container click loop short-circuits and cannot be relied on to blur the trailing box).
+        blurBoxIfOutside(searchBox, mouseX, mouseY);
+        blurBoxIfOutside(profilePanel.nameBox(), mouseX, mouseY);
         if (handleSearchClearClick(mouseX, mouseY)) return true;
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
         if (profilePanel.mouseClicked(mouseX, mouseY, 8, listTop(), listHeight())) return true;
@@ -569,8 +574,18 @@ public class KeybindEditScreen extends FixedScaleScreen {
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
         applyFixedScaleMetrics();
-        if (profilePanel.charTyped(codePoint, modifiers)) return true;
+        // Both the search box and the profile name box are focusable child widgets; super routes
+        // typing to whichever is focused.
         return super.charTyped(codePoint, modifiers);
+    }
+
+    private void blurBoxIfOutside(MCEditBox box, double mouseX, double mouseY) {
+        if (box == null || !box.isVisible() || !box.isFocused()) return;
+        if (mouseX < box.getX() || mouseX >= box.getX() + box.getWidth()
+                || mouseY < box.getY() || mouseY >= box.getY() + box.getHeight()) {
+            box.setFocused(false);
+            if (getFocused() == box) setFocused(null);
+        }
     }
 
     @Override
@@ -690,11 +705,15 @@ public class KeybindEditScreen extends FixedScaleScreen {
 
     private static boolean isConflicting(KeyMapping km, KeyMapping[] all) {
         if (km.isUnbound()) return false;
+        // Manually-ignored bindings are never shown as conflicting.
+        KeybindProfileStore profiles = KeybindProfileStore.global();
+        if (profiles.isConflictIgnored(km)) return false;
         boolean comboAware = KeybindViewerConfig.global().comboKeysNonConflicting();
         if (!comboAware) {
             for (KeyMapping other : all) {
                 if (other == km) continue;
                 if (other.isUnbound()) continue;
+                if (profiles.isConflictIgnored(other)) continue;
                 if (other.same(km)) return true;
             }
             return false;
@@ -704,6 +723,7 @@ public class KeybindEditScreen extends FixedScaleScreen {
         for (KeyMapping other : all) {
             if (other == km) continue;
             if (other.isUnbound()) continue;
+            if (profiles.isConflictIgnored(other)) continue;
             if (!sameInputKey(km, other)) continue;
             String otherActivator = store.activatorSignature(other, Services.PLATFORM.getKeyModifier(other));
             if (!Objects.equals(currentActivator, otherActivator)) continue;

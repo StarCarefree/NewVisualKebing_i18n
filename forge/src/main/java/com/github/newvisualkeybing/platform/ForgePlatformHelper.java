@@ -47,6 +47,15 @@ public class ForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public boolean isContextActive(KeyMapping mapping) {
+        try {
+            return mapping.getKeyConflictContext().isActive();
+        } catch (Throwable ignored) {
+            return true;
+        }
+    }
+
+    @Override
     public InputModifier getKeyModifier(KeyMapping mapping) {
         try {
             return fromForgeModifier(mapping.getKeyModifier());

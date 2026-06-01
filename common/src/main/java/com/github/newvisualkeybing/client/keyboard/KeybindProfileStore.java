@@ -22,10 +22,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Stream;
 
 public final class KeybindProfileStore {
@@ -56,6 +58,14 @@ public final class KeybindProfileStore {
             return global().priorityOf(mappingName);
         } catch (Throwable ignored) {
             return 0;
+        }
+    }
+
+    public static boolean globalConflictIgnored(String mappingName) {
+        try {
+            return global().isConflictIgnored(mappingName);
+        } catch (Throwable ignored) {
+            return false;
         }
     }
 
@@ -332,6 +342,31 @@ public final class KeybindProfileStore {
         KeybindPriorityEnforcer.resetAndEnforce();
     }
 
+    /** Whether this mapping is manually excluded from conflict detection/display. */
+    public boolean isConflictIgnored(String mappingName) {
+        return mappingName != null && data.conflictIgnored.contains(mappingName);
+    }
+
+    public boolean isConflictIgnored(KeyMapping mapping) {
+        return mapping != null && isConflictIgnored(mapping.getName());
+    }
+
+    /** Toggle the ignore-in-conflict flag for a mapping; returns the new state. */
+    public boolean toggleConflictIgnored(KeyMapping mapping) {
+        if (mapping == null) return false;
+        String name = mapping.getName();
+        boolean nowIgnored;
+        if (data.conflictIgnored.contains(name)) {
+            data.conflictIgnored.remove(name);
+            nowIgnored = false;
+        } else {
+            data.conflictIgnored.add(name);
+            nowIgnored = true;
+        }
+        save();
+        return nowIgnored;
+    }
+
     public List<KeyMapping> sortedMappings(KeyMapping[] mappings) {
         List<KeyMapping> list = new ArrayList<>(List.of(mappings));
         list.sort(Comparator
@@ -377,6 +412,7 @@ public final class KeybindProfileStore {
     private void normalize() {
         if (data.profiles == null) data.profiles = new ArrayList<>();
         if (data.priorities == null) data.priorities = new HashMap<>();
+        if (data.conflictIgnored == null) data.conflictIgnored = new LinkedHashSet<>();
         for (Profile profile : data.profiles) {
             if (profile.bindings == null) profile.bindings = new ArrayList<>();
             if (profile.name == null || profile.name.isBlank()) profile.name = normalizeProfileName(null, -1);
@@ -465,6 +501,7 @@ public final class KeybindProfileStore {
         int selectedProfile;
         List<Profile> profiles = new ArrayList<>();
         Map<String, Integer> priorities = new HashMap<>();
+        Set<String> conflictIgnored = new LinkedHashSet<>();
     }
 
     public static final class Profile {
