@@ -194,17 +194,11 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     private int listTop() { return FILTER_Y + FILTER_H + 6; }
     private int listHeight() { return height - listTop() - FOOTER_H - 8; }
 
-    private static final int LABEL_GUTTER_MAX = 136;
-    private static final int LABEL_GUTTER_MIN = 74;
-    private static final int LABEL_TOP_BAND_MIN = 48;
-    private static final int LABEL_TOP_BAND_MAX = 82;
-    private static final int LABEL_BOTTOM_BAND_MIN = 38;
-    private static final int LABEL_BOTTOM_BAND_MAX = 68;
     private static final int SUMMARY_H = 18;
     private static final int CALLOUT_GAP = 7;
     private static final int CALLOUT_LANE_GAP = 3;
-    private static final int MIN_KB_AREA = 150;
-    private static final int MIN_KB_AREA_H = 86;
+    private static final int MIN_CALLOUT_GUTTER = 34;
+    private static final int MIN_CALLOUT_BAND = 18;
 
     private void layoutBoard() {
         boardX = BODY_PAD + PANEL_W + COL_GAP;
@@ -212,30 +206,22 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         boardW = width - boardX - BODY_PAD;
         boardH = height - boardTop - FOOTER_H - 8;
 
-        // Reserve a real annotation ring around the keyboard: side gutters for mid-row labels and
-        // top/bottom bands for function, number, and modifier rows.
-        int gutter = Mth.clamp(boardW * 19 / 100, LABEL_GUTTER_MIN, LABEL_GUTTER_MAX);
-        int topBand = Mth.clamp(boardH * 19 / 100, LABEL_TOP_BAND_MIN, LABEL_TOP_BAND_MAX);
-        int bottomBand = Mth.clamp(boardH * 15 / 100, LABEL_BOTTOM_BAND_MIN, LABEL_BOTTOM_BAND_MAX);
-        calloutsEnabled = boardW - gutter * 2 >= MIN_KB_AREA
-                && boardH - topBand - bottomBand >= MIN_KB_AREA_H;
-        int innerX = boardX + (calloutsEnabled ? gutter : 0);
-        int innerW = boardW - (calloutsEnabled ? gutter * 2 : 0);
-        int innerTop = boardTop + (calloutsEnabled ? topBand : 0);
-        int innerH = boardH - (calloutsEnabled ? topBand + bottomBand : 0);
-
         float widthU = currentStyle.widthU();
         float heightU = currentStyle.heightU();
         float gapW = (widthU - 1) * KeyboardLayoutData.BASE_GAP;
         float gapH = (heightU - 1) * KeyboardLayoutData.BASE_GAP;
-        float ws = (innerW - gapW) / widthU;
-        float hs = (innerH - gapH) / heightU;
+        float ws = (boardW - gapW) / widthU;
+        float hs = (boardH - gapH) / heightU;
         keyScale = Math.max(1.0f, Math.min(FIXED_KEY_UNIT, Math.min(ws, hs)));
 
         keyboardW = KeyboardLayoutData.totalWidthPx(currentStyle, keyScale);
         keyboardH = KeyboardLayoutData.totalHeightPx(currentStyle, keyScale);
-        keyboardX = innerX + Math.max(0, (innerW - keyboardW) / 2);
-        keyboardY = innerTop + Math.max(0, (innerH - keyboardH) / 2);
+        keyboardX = boardX + Math.max(0, (boardW - keyboardW) / 2);
+        keyboardY = boardTop + Math.max(0, (boardH - keyboardH) / 2);
+        calloutsEnabled = keyboardX - boardX >= MIN_CALLOUT_GUTTER
+                || boardX + boardW - (keyboardX + keyboardW) >= MIN_CALLOUT_GUTTER
+                || horizontalBandAvailable(true)
+                || horizontalBandAvailable(false);
     }
 
     @Override
@@ -578,7 +564,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
             int cy = ky + kh / 2;
             CalloutItem item = new CalloutItem(glfw, kx, ky, kw, kh, cx, cy);
             if (scanner.getStatus(glfw) == KeyBindingScanner.KeyStatus.CONFLICT) conflicts++;
-            switch (calloutSide(key, cx)) {
+            switch (calloutSide(key, cx, cy)) {
                 case TOP -> top.add(item);
                 case BOTTOM -> bottom.add(item);
                 case LEFT -> left.add(item);
@@ -596,10 +582,36 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         placeSideColumn(g, right, false, chipH, mouseX, mouseY);
     }
 
-    private CalloutSide calloutSide(KeyboardLayoutData.KeyDef key, int cx) {
-        if (key.gridY() <= 1.15f) return CalloutSide.TOP;
-        if (key.gridY() + key.height() >= currentStyle.heightU() - 0.05f) return CalloutSide.BOTTOM;
-        return cx < keyboardX + keyboardW / 2 ? CalloutSide.LEFT : CalloutSide.RIGHT;
+    private CalloutSide calloutSide(KeyboardLayoutData.KeyDef key, int cx, int cy) {
+        if (key.gridY() <= 1.15f && horizontalBandAvailable(true)) return CalloutSide.TOP;
+        if (key.gridY() + key.height() >= currentStyle.heightU() - 0.05f
+                && horizontalBandAvailable(false)) return CalloutSide.BOTTOM;
+        return nearestSide(cx, cy);
+    }
+
+    private CalloutSide nearestSide(int cx, int cy) {
+        int leftSpace = keyboardX - boardX;
+        int rightSpace = boardX + boardW - (keyboardX + keyboardW);
+        int topSpace = keyboardY - boardTop;
+        int bottomSpace = boardTop + boardH - (keyboardY + keyboardH);
+        int best = leftSpace;
+        CalloutSide side = CalloutSide.LEFT;
+        if (rightSpace > best) { best = rightSpace; side = CalloutSide.RIGHT; }
+        if (horizontalBandAvailable(true) && topSpace > best && cy < keyboardY + keyboardH / 2) {
+            best = topSpace;
+            side = CalloutSide.TOP;
+        }
+        if (horizontalBandAvailable(false) && bottomSpace > best && cy >= keyboardY + keyboardH / 2) {
+            side = CalloutSide.BOTTOM;
+        }
+        return side;
+    }
+
+    private boolean horizontalBandAvailable(boolean topSide) {
+        int chipH = font.lineHeight + 4;
+        int bandTop = topSide ? boardTop + SUMMARY_H + 5 : keyboardY + keyboardH + CALLOUT_GAP;
+        int bandBottom = topSide ? keyboardY - CALLOUT_GAP : boardTop + boardH - 4;
+        return bandBottom - bandTop >= chipH;
     }
 
     private void renderAnnotationSummary(GuiGraphics g, int total, int conflicts, int hidden) {
@@ -627,32 +639,17 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
                                  int chipH, int mouseX, int mouseY) {
         int n = items.size();
         if (n == 0) return;
+        int colLeft = leftSide ? boardX + 2 : keyboardX + keyboardW + CALLOUT_GAP;
+        int colRight = leftSide ? keyboardX - CALLOUT_GAP : boardX + boardW - 2;
+        int colW = colRight - colLeft;
+        if (colW < MIN_CALLOUT_GUTTER) return;
+
         items.sort((a, b) -> Integer.compare(a.cy(), b.cy()));
         int spanTop = keyboardY;
         int bottomLimit = keyboardY + keyboardH;
         int span = Math.max(chipH, bottomLimit - spanTop);
         int slot = Math.max(font.lineHeight + 1, Math.min(chipH + 3, span / n));
-
-        // Anchor each label at its key's vertical centre, then resolve overlaps so labels stay as
-        // close to their key as possible: a top-down pass, plus a bottom-up pass on overflow.
-        int[] yTop = new int[n];
-        for (int i = 0; i < n; i++) {
-            yTop[i] = Mth.clamp(items.get(i).cy() - chipH / 2, spanTop, bottomLimit - chipH);
-        }
-        for (int i = 1; i < n; i++) {
-            if (yTop[i] < yTop[i - 1] + slot) yTop[i] = yTop[i - 1] + slot;
-        }
-        if (yTop[n - 1] + chipH > bottomLimit) {
-            yTop[n - 1] = bottomLimit - chipH;
-            for (int i = n - 2; i >= 0; i--) {
-                if (yTop[i] + slot > yTop[i + 1]) yTop[i] = yTop[i + 1] - slot;
-            }
-        }
-        for (int i = 0; i < n; i++) yTop[i] = Mth.clamp(yTop[i], spanTop, bottomLimit - chipH);
-
-        int colLeft = leftSide ? boardX + 2 : keyboardX + keyboardW + CALLOUT_GAP;
-        int colRight = leftSide ? keyboardX - CALLOUT_GAP : boardX + boardW - 2;
-        int colW = Math.max(40, colRight - colLeft);
+        int[] yTop = resolvedVerticalSlots(items, spanTop, bottomLimit, chipH, slot);
         int railX = leftSide ? keyboardX - 4 : keyboardX + keyboardW + 4;
 
         for (int i = 0; i < n; i++) {
@@ -721,6 +718,25 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
                         topSide ? CalloutSide.TOP : CalloutSide.BOTTOM, hover, accent);
             }
         }
+    }
+
+    private int[] resolvedVerticalSlots(List<CalloutItem> items, int top, int bottom, int chipH, int slot) {
+        int n = items.size();
+        int[] yTop = new int[n];
+        for (int i = 0; i < n; i++) {
+            yTop[i] = Mth.clamp(items.get(i).cy() - chipH / 2, top, bottom - chipH);
+        }
+        for (int i = 1; i < n; i++) {
+            if (yTop[i] < yTop[i - 1] + slot) yTop[i] = yTop[i - 1] + slot;
+        }
+        if (yTop[n - 1] + chipH > bottom) {
+            yTop[n - 1] = bottom - chipH;
+            for (int i = n - 2; i >= 0; i--) {
+                if (yTop[i] + slot > yTop[i + 1]) yTop[i] = yTop[i + 1] - slot;
+            }
+        }
+        for (int i = 0; i < n; i++) yTop[i] = Mth.clamp(yTop[i], top, bottom - chipH);
+        return yTop;
     }
 
     private int preferredChipWidth(CalloutItem item, int maxW) {
