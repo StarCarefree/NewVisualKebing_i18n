@@ -42,6 +42,7 @@ public class KeybindEditScreen extends FixedScaleScreen {
     private MCEditBox searchBox;
     private MCButton resetAllButton;
     private MCButton viewerButton;
+    private MCButton boardButton;
     private MCButton comboButton;
     private MCButton backButton;
     private final KeybindProfileStore profileStore = KeybindProfileStore.global();
@@ -81,10 +82,12 @@ public class KeybindEditScreen extends FixedScaleScreen {
         int btnGap = 6;
         int backW = 60;
         int viewerW = 96;
+        int boardW = 84;
         int comboW = 96;
         int resetW = 110;
         int xReset = width - 12 - resetW;
-        int xViewer = xReset - btnGap - viewerW;
+        int xBoard = xReset - btnGap - boardW;
+        int xViewer = xBoard - btnGap - viewerW;
         int xCombo = xViewer - btnGap - comboW;
         int xBack = xCombo - btnGap - backW;
         searchW = Mth.clamp(xBack - searchX - 14, 130, 330);
@@ -116,6 +119,11 @@ public class KeybindEditScreen extends FixedScaleScreen {
                 Component.translatable("screen.newvisualkeybing.viewer.open_visual"),
                 b -> minecraft.setScreen(new KeybindViewerScreen(parent)));
         addRenderableWidget(viewerButton);
+
+        boardButton = MCButton.create(xBoard, 8, boardW, 20,
+                Component.translatable("screen.newvisualkeybing.viewer.board.open"),
+                b -> minecraft.setScreen(new KeybindBindBoardScreen(this)));
+        addRenderableWidget(boardButton);
 
         resetAllButton = MCButton.create(xReset, 8, resetW, 20,
                 Component.translatable("screen.newvisualkeybing.viewer.reset_all"), b -> resetAllMappings());

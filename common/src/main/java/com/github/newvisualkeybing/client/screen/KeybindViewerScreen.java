@@ -61,6 +61,7 @@ public class KeybindViewerScreen extends FixedScaleScreen {
     private MCEditBox searchBox;
     private MCButton closeButton;
     private MCButton manageButton;
+    private MCButton boardButton;
     private MCButton comboButton;
     private MCButton modToggleButton;
     private MCButton profileToggleButton;
@@ -157,6 +158,7 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         int btnModsW = fitButtonWidth(Component.translatable("screen.newvisualkeybing.viewer.mods"), compact ? 38 : 56, compact ? 64 : 78);
         int btnProfilesW = fitButtonWidth(Component.translatable("screen.newvisualkeybing.viewer.profiles"), compact ? 52 : 68, compact ? 78 : 94);
         int btnManageW = fitButtonWidth(Component.translatable("screen.newvisualkeybing.viewer.manage"), compact ? 48 : 64, compact ? 74 : 86);
+        int btnBoardW = fitButtonWidth(Component.translatable("screen.newvisualkeybing.viewer.board.open"), compact ? 48 : 64, compact ? 74 : 90);
         int btnComboW = fitButtonWidth(Component.translatable("screen.newvisualkeybing.viewer.combo.open"), compact ? 56 : 72, compact ? 82 : 96);
         int btnLayoutW = fitButtonWidth(layoutLabel(currentStyle), compact ? 56 : 78, compact ? 86 : 104);
 
@@ -164,7 +166,8 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         int xMods = xClose - btnGap - btnModsW;
         int xProfiles = xMods - btnGap - btnProfilesW;
         int xManage = xProfiles - btnGap - btnManageW;
-        int xCombo = xManage - btnGap - btnComboW;
+        int xBoard = xManage - btnGap - btnBoardW;
+        int xCombo = xBoard - btnGap - btnComboW;
         int xLayout = xCombo - btnGap - btnLayoutW;
 
         computeToolbarGeometry(compact);
@@ -208,6 +211,11 @@ public class KeybindViewerScreen extends FixedScaleScreen {
                 Component.translatable("screen.newvisualkeybing.viewer.manage"),
                 button -> minecraft.setScreen(new KeybindEditScreen(this)));
         addRenderableWidget(manageButton);
+
+        boardButton = MCButton.create(xBoard, btnY, btnBoardW, btnH,
+                Component.translatable("screen.newvisualkeybing.viewer.board.open"),
+                button -> minecraft.setScreen(new KeybindBindBoardScreen(this)));
+        addRenderableWidget(boardButton);
 
         comboButton = MCButton.create(xCombo, btnY, btnComboW, btnH,
                 Component.translatable("screen.newvisualkeybing.viewer.combo.open"),

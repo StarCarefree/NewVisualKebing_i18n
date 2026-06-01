@@ -527,6 +527,12 @@ public class KeyBindingScanner {
     }
 
 
+    /** Resolve the owning mod id for a mapping, using the same heuristics as the scan. */
+    public static String modIdOf(KeyMapping mapping) {
+        if (mapping == null) return "minecraft";
+        return resolveModId(mapping.getName(), mapping.getCategory());
+    }
+
     private static String resolveModId(String name, String category) {
         
         if (name != null && name.startsWith("key.")) {
