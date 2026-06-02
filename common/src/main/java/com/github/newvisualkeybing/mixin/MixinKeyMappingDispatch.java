@@ -32,11 +32,24 @@ import java.util.Set;
 @Mixin(KeyMapping.class)
 public class MixinKeyMappingDispatch {
 
+    /**
+     * Invalidate the priority enforcer's bound-key index whenever mappings are reset. Both vanilla
+     * rebinds ({@code Options#setKey}) and this mod's edits ({@code resetAndEnforce}) call
+     * {@code resetMapping()}, so this is the single, complete invalidation point.
+     */
+    @Inject(method = "resetMapping()V", at = @At("TAIL"))
+    private static void newvisualkeybing$onResetMapping(CallbackInfo ci) {
+        KeybindPriorityEnforcer.invalidateKeyIndex();
+        KeybindComboStore.invalidateMappingCache();
+    }
+
     @Inject(method = "click(Lcom/mojang/blaze3d/platform/InputConstants$Key;)V",
             at = @At("HEAD"), cancellable = true)
     private static void newvisualkeybing$onClick(InputConstants.Key key, CallbackInfo ci) {
         KeybindComboStore store = KeybindComboStore.global();
-        List<KeybindComboStore.Match> matches = store.triggerMatches(key);
+        boolean hasCombos = store.hasCombos();
+        List<KeybindComboStore.Match> matches = hasCombos
+                ? store.triggerMatches(key) : java.util.Collections.emptyList();
         List<KeyMapping> singles = KeybindPriorityEnforcer.singleKeyMappings(key);
 
         // Nothing to multiplex: 0 or 1 binding and no chord — let vanilla handle it normally.
@@ -58,7 +71,9 @@ public class MixinKeyMappingDispatch {
             at = @At("HEAD"), cancellable = true)
     private static void newvisualkeybing$onSet(InputConstants.Key key, boolean held, CallbackInfo ci) {
         KeybindComboStore store = KeybindComboStore.global();
-        List<KeybindComboStore.Match> matches = store.triggerMatches(key);
+        boolean hasCombos = store.hasCombos();
+        List<KeybindComboStore.Match> matches = hasCombos
+                ? store.triggerMatches(key) : java.util.Collections.emptyList();
         List<KeyMapping> singles = KeybindPriorityEnforcer.singleKeyMappings(key);
         // Take over only when there is more than one binding to drive, or any chord is involved.
         // A lone single binding is left to vanilla so unrelated keys are untouched.
@@ -70,8 +85,10 @@ public class MixinKeyMappingDispatch {
 
         // The key may also be a chord modifier (firstKey). When it is pressed or released the
         // active state of chords keyed off any trigger that uses it changes without the trigger
-        // itself receiving an event, so re-sync those triggers (and their single keys).
-        Set<InputConstants.Key> firstKeyTriggers = store.triggersForFirstKey(key);
+        // itself receiving an event, so re-sync those triggers (and their single keys). With no
+        // chords configured there is nothing to re-sync, so skip the store lookups entirely.
+        Set<InputConstants.Key> firstKeyTriggers = hasCombos
+                ? store.triggersForFirstKey(key) : java.util.Collections.emptySet();
         for (InputConstants.Key trigger : firstKeyTriggers) {
             if (newvisualkeybing$sameKey(trigger, key)) continue;
             List<KeybindComboStore.Match> triggerMatches = store.triggerMatches(trigger);

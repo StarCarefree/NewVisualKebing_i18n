@@ -21,8 +21,10 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -52,6 +54,8 @@ public final class KeybindComboStore {
     private final Path storeFile;
     private StoreData data = new StoreData();
     private volatile long version;
+    /** Lock-free hint mirroring {@code !data.combos.isEmpty()}; lets hot paths skip combo work. */
+    private volatile boolean comboPresent;
     private final java.util.List<Runnable> reloadListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     private KeybindComboStore() {
@@ -119,6 +123,16 @@ public final class KeybindComboStore {
 
     private void bumpVersion() {
         version++;
+        comboPresent = data.combos != null && !data.combos.isEmpty();
+    }
+
+    /**
+     * Lock-free check for whether any combo is configured. Hot paths (per-key dispatch,
+     * per-frame rendering) use this to skip all combo bookkeeping in the common no-chord
+     * case without taking the store monitor. Kept in sync by {@link #bumpVersion()}.
+     */
+    public boolean hasCombos() {
+        return comboPresent;
     }
 
     private void normalize() {
@@ -318,14 +332,35 @@ public final class KeybindComboStore {
         return Component.translatable(mappingName).getString();
     }
 
+    /**
+     * Cache of {@code mappingName -> KeyMapping}. This association is fixed once mods finish
+     * registering their key mappings — a rebind changes a mapping's bound key (read live via
+     * {@link #currentKey}), never its name or identity — so caching it is accuracy-neutral. It
+     * turns the combo dispatch from O(combos × keyMappings) into O(combos), the dominant cost on
+     * the chord input path. Invalidated defensively from the same {@code resetMapping} hook as the
+     * priority enforcer's key index. {@code null} means "rebuild on next access".
+     */
+    private static volatile Map<String, KeyMapping> mappingByNameCache;
+
+    /** Drop the {@code mappingName -> KeyMapping} cache; rebuilt lazily on next {@link #findMapping}. */
+    public static void invalidateMappingCache() {
+        mappingByNameCache = null;
+    }
+
     public static KeyMapping findMapping(String mappingName) {
         if (mappingName == null) return null;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.options == null) return null;
-        for (KeyMapping mapping : mc.options.keyMappings) {
-            if (Objects.equals(mapping.getName(), mappingName)) return mapping;
+        Map<String, KeyMapping> cache = mappingByNameCache;
+        if (cache == null) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.options == null) return null;
+            cache = new HashMap<>();
+            // putIfAbsent preserves the original "first mapping with this name wins" semantics.
+            for (KeyMapping mapping : mc.options.keyMappings) {
+                cache.putIfAbsent(mapping.getName(), mapping);
+            }
+            mappingByNameCache = cache;
         }
-        return null;
+        return cache.get(mappingName);
     }
 
     public static InputConstants.Key currentKey(KeyMapping mapping) {

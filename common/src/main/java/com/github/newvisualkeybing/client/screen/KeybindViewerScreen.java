@@ -131,6 +131,16 @@ public class KeybindViewerScreen extends FixedScaleScreen {
     private String hintLabel;
     private String modPanelTitle;
     private String clearModLabel;
+    // Static band labels cached once (they only change with language/font, i.e. a screen re-init),
+    // so the per-frame band rendering no longer rebuilds them via Component.translatable().getString().
+    private String bandNoModLabel;
+    private String bandHoverHint;
+    private String bandUnboundLabel;
+    private String bandHiddenOnLabel;
+    private String bandHiddenOffLabel;
+    private String legendTitle;
+    // Status-bar middle text (layout | scale) rebuilt only when the layout changes, not every frame.
+    private String statusMiddleText = "";
 
     public KeybindViewerScreen(Screen parent) {
         super(Component.translatable("screen.newvisualkeybing.viewer.title"));
@@ -294,6 +304,12 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         hintLabel = Component.translatable("screen.newvisualkeybing.viewer.hint").getString();
         modPanelTitle = Component.translatable("screen.newvisualkeybing.viewer.mods").getString();
         clearModLabel = Component.translatable("screen.newvisualkeybing.viewer.clear_mod").getString();
+        bandNoModLabel = Component.translatable("screen.newvisualkeybing.viewer.keyboard_band.no_mod").getString();
+        bandHoverHint = Component.translatable("screen.newvisualkeybing.viewer.hover_hint").getString();
+        bandUnboundLabel = Component.translatable("screen.newvisualkeybing.viewer.unbound").getString();
+        bandHiddenOnLabel = Component.translatable("screen.newvisualkeybing.viewer.keyboard_band.hidden_on").getString();
+        bandHiddenOffLabel = Component.translatable("screen.newvisualkeybing.viewer.keyboard_band.hidden_off").getString();
+        legendTitle = Component.translatable("screen.newvisualkeybing.viewer.legend.title").getString();
     }
 
     @Override
@@ -452,9 +468,7 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         g.fill(0, y, width, y + 1, c.divider());
 
         int textY = y + (STATUS_H - font.lineHeight) / 2;
-        String scale = Component.translatable("screen.newvisualkeybing.viewer.scale", Math.round(keyScale)).getString();
-        String layoutName = layoutLabel(currentStyle).getString();
-        String middle = layoutName + "  |  " + scale;
+        String middle = statusMiddleText;
         int middleW = font.width(middle);
         int middleX = (width - middleW) / 2;
 
@@ -572,8 +586,9 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         UITheme.drawRoundedBorderFast(g, x, y, w, h, 7, UITheme.withAlpha(c.widgetBorder(), 0x8E));
         int textY = y + (h - font.lineHeight) / 2;
         if (selectedModId == null) {
-            String text = Component.translatable("screen.newvisualkeybing.viewer.keyboard_band.no_mod").getString();
-            g.drawString(font, fitToWidth(font, text, w - 18), x + 9, textY, c.textMuted(), false);
+            // No mod selected: use the band as a persistent color legend so the key colors are
+            // always decodable, instead of a bland "no mod" line.
+            renderInlineLegend(g, x + 9, y, w - 18, h);
             return;
         }
         String modName = scanner.getAllRegisteredMods().getOrDefault(selectedModId, selectedModId);
@@ -581,13 +596,42 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         String left = Component.translatable("screen.newvisualkeybing.viewer.keyboard_band.mod",
                 modName, stats.inputs(), stats.bindings()).getString();
         g.drawString(font, fitToWidth(font, left, Math.max(80, w / 2)), x + 9, textY, c.textPrimary(), false);
-        String right = Component.translatable(viewerConfig.hideNonSelectedMod()
-                ? "screen.newvisualkeybing.viewer.keyboard_band.hidden_on"
-                : "screen.newvisualkeybing.viewer.keyboard_band.hidden_off").getString();
+        String right = viewerConfig.hideNonSelectedMod() ? bandHiddenOnLabel : bandHiddenOffLabel;
         int rightW = font.width(right);
         if (rightW < w / 2 - 8) {
             g.drawString(font, right, x + w - rightW - 9, textY,
                     viewerConfig.hideNonSelectedMod() ? c.accentLight() : c.textMuted(), false);
+        }
+    }
+
+    /**
+     * Draws the key-status color legend inline (swatch + label per entry), stopping once it would
+     * overflow {@code w}. Used in the top band when no mod is selected so the colors stay decodable.
+     */
+    private void renderInlineLegend(GuiGraphics g, int x, int y, int w, int h) {
+        var c = UITheme.colors();
+        final int sw = 8;          // swatch edge
+        final int gap = 4;         // swatch -> label
+        final int itemGap = 12;    // item -> item
+        int cy = y + (h - font.lineHeight) / 2;
+        int swatchY = y + (h - sw) / 2;
+        int right = x + w;
+        int cx = x;
+        int[] cols = { c.widgetBorderHover(), c.accent(), c.success(), c.warning(), c.danger() };
+        if (legendTitle != null && !legendTitle.isEmpty()) {
+            int tw = font.width(legendTitle);
+            if (cx + tw + 10 < right) {
+                g.drawString(font, legendTitle, cx, cy, c.textMuted(), false);
+                cx += tw + 10;
+            }
+        }
+        for (int i = 0; i < legendLabels.length; i++) {
+            int itemW = sw + gap + legendLabelWidths[i];
+            if (cx + itemW > right) break;
+            UITheme.fillRoundedRectFast(g, cx, swatchY, sw, sw, 2, cols[i]);
+            UITheme.drawRoundedBorderFast(g, cx, swatchY, sw, sw, 2, UITheme.withAlpha(c.widgetBorder(), 0xC0));
+            g.drawString(font, legendLabels[i], cx + sw + gap, cy, c.textSecondary(), false);
+            cx += itemW + itemGap;
         }
     }
 
@@ -597,8 +641,7 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         UITheme.drawRoundedBorderFast(g, x, y, w, h, 7, UITheme.withAlpha(c.widgetBorder(), 0x78));
         int textY = y + (h - font.lineHeight) / 2;
         if (virtualKey == null) {
-            String text = Component.translatable("screen.newvisualkeybing.viewer.hover_hint").getString();
-            g.drawString(font, fitToWidth(font, text, w - 18), x + 9, textY, c.textMuted(), false);
+            g.drawString(font, fitToWidth(font, bandHoverHint, w - 18), x + 9, textY, c.textMuted(), false);
             return;
         }
         List<KeyBindingScanner.KeyBindingInfo> bindings = scanner.getVirtualBindings(virtualKey);
@@ -610,8 +653,7 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         int curX = x + labelW + 14;
         int right = x + w - 8;
         if (bindings.isEmpty()) {
-            String empty = Component.translatable("screen.newvisualkeybing.viewer.unbound").getString();
-            g.drawString(font, fitToWidth(font, empty, right - curX), curX, textY, c.textMuted(), false);
+            g.drawString(font, fitToWidth(font, bandUnboundLabel, right - curX), curX, textY, c.textMuted(), false);
             return;
         }
         int max = Math.min(3, bindings.size());
@@ -806,10 +848,15 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             mousePanelW = railW;
             mousePanelX = width - BODY_PAD - railW;
             mousePanelY = contentTop;
-            mousePanelH = Math.min(MOUSE_PANEL_STACK_H, Math.max(128, bodyH / 3));
+            // Give the mouse diagram up to ~40% of the column (capped), but never let it push the
+            // info-dense detail panel below a usable minimum or off the bottom. The old fixed-128
+            // minimum could overflow the detail panel past the status bar on small canvases.
+            int mouseDesired = Math.min(MOUSE_PANEL_STACK_H, Math.max(110, bodyH * 2 / 5));
+            int mouseMax = Math.max(60, bodyH - COL_GAP - 80);
+            mousePanelH = Math.min(mouseDesired, mouseMax);
             detailPanelX = mousePanelX;
             detailPanelY = mousePanelY + mousePanelH + COL_GAP;
-            detailPanelH = Math.max(96, contentBottom - detailPanelY);
+            detailPanelH = Math.max(60, contentBottom - detailPanelY);
         } else {
             detailPanelW = detailW;
             mousePanelW = mouseW;
@@ -826,7 +873,13 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         int keyboardLeft = leftMargin;
         int keyboardRight = (rightRailStacked ? detailPanelX : mousePanelX) - COL_GAP;
         int keyboardSpaceW = keyboardRight - keyboardLeft;
-        int infoH = bodyH >= 300 && keyboardSpaceW >= 340 ? 24 : 0;
+        // Keep the info bands on whenever there is any reasonable room (the fixed 2x scale makes the
+        // logical canvas small, so the old bodyH>=300 gate hid them on most non-1080p windows). Fall
+        // back to a compact height when vertical space is tight, and only drop them when truly cramped.
+        int infoH = keyboardSpaceW < 240 ? 0
+                : bodyH >= 260 ? 24
+                : bodyH >= 180 ? 18
+                : 0;
         int infoGap = infoH > 0 ? 6 : 0;
         int keyboardSpaceH = Math.max(90, bodyH - infoH * 2 - infoGap * 2);
         float widthU = currentStyle.widthU();
@@ -843,6 +896,10 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         keyboardInfoTopH = infoH;
         keyboardInfoBottomY = contentBottom - infoH;
         keyboardInfoBottomH = infoH;
+
+        // Layout|scale string for the status bar; rebuilt only here (on layout change), not per frame.
+        statusMiddleText = layoutLabel(currentStyle).getString() + "  |  "
+                + Component.translatable("screen.newvisualkeybing.viewer.scale", Math.round(keyScale)).getString();
     }
 
     private float fitKeyboardScale(int keyboardSpaceW, int keyboardSpaceH,

@@ -21,7 +21,22 @@ public final class KeybindPriorityEnforcer {
     private static volatile Field cachedMapField;
     private static volatile boolean lookupFailed;
 
+    /**
+     * Lazily-built index of {@code boundKey -> mappings bound to it}, so {@link #singleKeyMappings}
+     * is an O(1) lookup instead of a full scan of every key mapping on each key event. The bound
+     * key of a mapping only ever changes through {@link KeyMapping#resetMapping()} (both vanilla
+     * rebinds and this mod's edits funnel through it), so that is the single invalidation point —
+     * see {@code MixinKeyMappingDispatch#newvisualkeybing$onResetMapping}. {@code null} means "rebuild
+     * on next access". Combo state is intentionally NOT part of the index; it is applied afterwards.
+     */
+    private static volatile Map<InputConstants.Key, List<KeyMapping>> cachedKeyIndex;
+
     private KeybindPriorityEnforcer() {}
+
+    /** Drop the cached key index; rebuilt lazily on the next {@link #singleKeyMappings} call. */
+    public static void invalidateKeyIndex() {
+        cachedKeyIndex = null;
+    }
 
 
     public static void resetAndEnforce() {
@@ -64,19 +79,47 @@ public final class KeybindPriorityEnforcer {
      * letting only the single {@code KeyMapping.MAP} winner through.
      */
     public static List<KeyMapping> singleKeyMappings(InputConstants.Key key) {
-        List<KeyMapping> result = new ArrayList<>();
-        if (key == null || key == InputConstants.UNKNOWN) return result;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.options == null) return result;
+        if (key == null || key == InputConstants.UNKNOWN) return new ArrayList<>();
+        // O(1) lookup against the bound-key index instead of scanning every mapping per key event.
+        List<KeyMapping> bound = keyIndex().get(key);
+        if (bound == null || bound.isEmpty()) return new ArrayList<>();
         KeybindComboStore combos = KeybindComboStore.global();
-        for (KeyMapping mapping : mc.options.keyMappings) {
-            InputConstants.Key bound = ((KeyMappingAccessor) (Object) mapping).newvisualkeybing$getKey();
-            if (bound == null || bound == InputConstants.UNKNOWN) continue;
-            if (bound.getType() != key.getType() || bound.getValue() != key.getValue()) continue;
+        // When no chords are configured (the common case) the per-mapping combo check is a pure
+        // no-op, so just hand back a defensive copy of the (typically 1-element) index bucket.
+        if (!combos.hasCombos()) return new ArrayList<>(bound);
+        List<KeyMapping> result = new ArrayList<>(bound.size());
+        for (KeyMapping mapping : bound) {
             if (combos.matchesCurrentCombo(mapping)) continue;
             result.add(mapping);
         }
         return result;
+    }
+
+    /**
+     * The bound-key index, rebuilt lazily after {@link #invalidateKeyIndex()}. Returns an empty
+     * (uncached) map while the client/options are not yet available, so the real index is built
+     * on the first real lookup rather than being frozen empty during early startup.
+     */
+    private static Map<InputConstants.Key, List<KeyMapping>> keyIndex() {
+        Map<InputConstants.Key, List<KeyMapping>> index = cachedKeyIndex;
+        if (index != null) return index;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.options == null) return Collections.emptyMap();
+        index = buildKeyIndex(mc);
+        cachedKeyIndex = index;
+        return index;
+    }
+
+    private static Map<InputConstants.Key, List<KeyMapping>> buildKeyIndex(Minecraft mc) {
+        Map<InputConstants.Key, List<KeyMapping>> index = new HashMap<>();
+        for (KeyMapping mapping : mc.options.keyMappings) {
+            InputConstants.Key bound = ((KeyMappingAccessor) (Object) mapping).newvisualkeybing$getKey();
+            if (bound == null || bound == InputConstants.UNKNOWN) continue;
+            // InputConstants.Key instances are interned singletons (vanilla itself keys
+            // KeyMapping.MAP by them), so they are sound HashMap keys.
+            index.computeIfAbsent(bound, k -> new ArrayList<>(2)).add(mapping);
+        }
+        return index;
     }
 
     /**
