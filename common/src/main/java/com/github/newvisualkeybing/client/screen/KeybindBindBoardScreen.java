@@ -20,11 +20,15 @@ import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -37,6 +41,8 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     private static final int HEADER_H = 40;
     private static final int FOOTER_H = 22;
     private static final int PANEL_W = 224;
+    // Width the functions panel shrinks to when folded shut — just a rail with an expand chevron.
+    private static final int PANEL_COLLAPSED_W = 22;
     private static final int PANEL_PAD = 10;
     private static final int SEARCH_H = 20;
     private static final int ROW_H = 22;
@@ -74,14 +80,19 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
 
     private final List<Object> entries = new ArrayList<>();
     // Names of the mappings currently shown in the palette list (mod + search filtered); the
-    // SELECTED annotation scope mirrors exactly this set.
+    // SELECTED annotation scope mirrors exactly this set. Collapsing a category hides its rows but
+    // keeps its mappings in this set, so folding the list never changes what the keyboard annotates.
     private final Set<String> listedMappingNames = new HashSet<>();
+    // Categories the user has folded shut in the palette (remembered by name across rebuilds).
+    private final Set<String> collapsedCategories = new HashSet<>();
     private int listScroll;
     private int totalListH;
 
     private String selectedModId;
     private boolean modDropdownOpen;
     private int modDropdownScroll;
+    // When folded, the side palette collapses to a rail and the keyboard reclaims the freed width.
+    private boolean functionsCollapsed;
 
     private float keyScale;
     private int keyboardX;
@@ -201,11 +212,14 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         }
         int h = 0;
         for (Map.Entry<String, List<KeyMapping>> e : grouped.entrySet()) {
-            entries.add(new CategoryEntry(e.getKey()));
+            boolean collapsed = collapsedCategories.contains(e.getKey());
+            entries.add(new CategoryEntry(e.getKey(), e.getValue().size(), collapsed));
             h += CAT_H;
             for (KeyMapping km : e.getValue()) {
-                entries.add(new FuncEntry(km));
+                // Annotation set tracks every filtered mapping; collapse only hides the palette rows.
                 listedMappingNames.add(km.getName());
+                if (collapsed) continue;
+                entries.add(new FuncEntry(km));
                 h += ROW_H;
             }
         }
@@ -222,8 +236,12 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     private static final int CALLOUT_KB_MARGIN = 18;
     private static final int MIN_CALLOUT_GUTTER = 46;
 
+    private int panelWidth() {
+        return functionsCollapsed ? PANEL_COLLAPSED_W : PANEL_W;
+    }
+
     private void layoutBoard() {
-        boardX = BODY_PAD + PANEL_W + COL_GAP;
+        boardX = BODY_PAD + panelWidth() + COL_GAP;
         boardTop = HEADER_H + 8;
         boardW = width - boardX - BODY_PAD;
         boardH = height - boardTop - FOOTER_H - 8;
@@ -310,8 +328,13 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         int x = BODY_PAD;
         int top = HEADER_H + 4;
         int h = height - top - FOOTER_H - 4;
+        if (functionsCollapsed) {
+            renderCollapsedRail(g, x, top, h, mouseX, mouseY);
+            return;
+        }
         String title = Component.translatable("screen.newvisualkeybing.board.functions").getString();
         KeybindViewerScreen.paintPanelBase(g, font, x, top, PANEL_W, h, title);
+        renderPanelToggle(g, mouseX, mouseY);
 
         int listTop = listTop();
         int listH = listHeight();
@@ -326,8 +349,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
             int eh = entry instanceof CategoryEntry ? CAT_H : ROW_H;
             if (drawY + eh >= listTop && drawY <= listTop + listH) {
                 if (entry instanceof CategoryEntry ce) {
-                    g.drawString(font, KeybindViewerScreen.fitToWidth(font, ce.name, innerW - 4),
-                            innerX + 2, drawY + (CAT_H - font.lineHeight) / 2, c.accentLight(), false);
+                    renderCategoryRow(g, ce, innerX, drawY, innerW, mouseX, mouseY);
                 } else if (entry instanceof FuncEntry fe) {
                     boolean hovered = dragging == null
                             && KeybindViewerScreen.inside(mouseX, mouseY, innerX, drawY, innerW, ROW_H - 2);
@@ -347,6 +369,69 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         }
 
         if (modDropdownOpen) renderModDropdown(g, innerX, innerW, mouseX, mouseY);
+    }
+
+    /** Folded state: a slim rail standing in for the panel, clickable anywhere to expand. */
+    private void renderCollapsedRail(GuiGraphics g, int x, int top, int h, int mouseX, int mouseY) {
+        var c = UITheme.colors();
+        int w = PANEL_COLLAPSED_W;
+        boolean hovered = KeybindViewerScreen.inside(mouseX, mouseY, x, top, w, h);
+        UITheme.fillRoundedRectFast(g, x, top, w, h, 6,
+                UITheme.withAlpha(c.headerBg(), hovered ? 0xF0 : 0xDC));
+        UITheme.drawRoundedBorderFast(g, x, top, w, h, 6,
+                UITheme.withAlpha(hovered ? c.accent() : c.widgetBorder(), 0xA0));
+        int[] r = panelToggleRect();
+        if (hovered) {
+            UITheme.fillRoundedRectFast(g, r[0], r[1], r[2], r[3], 3, UITheme.withAlpha(c.widgetBg(), 0x88));
+        }
+        String chev = "▸";
+        g.drawString(font, chev, r[0] + (r[2] - font.width(chev)) / 2,
+                r[1] + (r[3] - font.lineHeight) / 2, hovered ? c.textPrimary() : c.textSecondary(), false);
+        // Vertical "FUNCTIONS" hint so the rail reads as the collapsed functions panel.
+        String hint = Component.translatable("screen.newvisualkeybing.board.functions").getString().toUpperCase(Locale.ROOT);
+        int gy = r[1] + r[3] + 8;
+        int cx = x + w / 2;
+        for (int i = 0; i < hint.length() && gy + font.lineHeight < top + h - 4; i++) {
+            String ch = String.valueOf(hint.charAt(i));
+            if (ch.equals(" ")) { gy += font.lineHeight / 2; continue; }
+            g.drawString(font, ch, cx - font.width(ch) / 2, gy, UITheme.withAlpha(c.textMuted(), 0xC0), false);
+            gy += font.lineHeight;
+        }
+    }
+
+    /** Collapse/expand chevron drawn in the expanded panel's header corner. */
+    private void renderPanelToggle(GuiGraphics g, int mouseX, int mouseY) {
+        var c = UITheme.colors();
+        int[] r = panelToggleRect();
+        boolean hovered = KeybindViewerScreen.inside(mouseX, mouseY, r[0], r[1], r[2], r[3]);
+        if (hovered) {
+            UITheme.fillRoundedRectFast(g, r[0], r[1], r[2], r[3], 3, UITheme.withAlpha(c.widgetBg(), 0x88));
+        }
+        String chev = "◂";
+        g.drawString(font, chev, r[0] + (r[2] - font.width(chev)) / 2,
+                r[1] + (r[3] - font.lineHeight) / 2, hovered ? c.textPrimary() : c.textSecondary(), false);
+    }
+
+    /** {x, y, w, h} of the panel collapse/expand chevron, valid in both states. */
+    private int[] panelToggleRect() {
+        int s = 14;
+        int y = PANEL_TOP + 6;
+        int x = functionsCollapsed
+                ? BODY_PAD + (PANEL_COLLAPSED_W - s) / 2
+                : BODY_PAD + PANEL_W - s - 6;
+        return new int[]{x, y, s, s};
+    }
+
+    private void toggleFunctionsCollapsed() {
+        functionsCollapsed = !functionsCollapsed;
+        modDropdownOpen = false;
+        if (searchBox != null) {
+            searchBox.setVisible(!functionsCollapsed);
+            if (functionsCollapsed) {
+                searchBox.setFocused(false);
+                if (getFocused() == searchBox) setFocused(null);
+            }
+        }
     }
 
     private void renderFilterBar(GuiGraphics g, int x, int w, int mouseX, int mouseY) {
@@ -385,7 +470,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         int rowY = y + 3;
         for (int i = modDropdownScroll; i < ids.size() && i < modDropdownScroll + visible; i++) {
             String id = ids.get(i);
-            boolean sel = id == null ? selectedModId == null : id.equals(selectedModId);
+            boolean sel = Objects.equals(id, selectedModId);
             boolean hovered = KeybindViewerScreen.inside(mouseX, mouseY, x + 3, rowY, w - 6, MOD_ROW_H - 1);
             if (sel || hovered) {
                 UITheme.fillRoundedRectFast(g, x + 3, rowY, w - 6, MOD_ROW_H - 1, 4,
@@ -414,6 +499,24 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         ids.add(null); // "All"
         ids.addAll(scanner.getAllRegisteredMods().keySet());
         return ids;
+    }
+
+    /** Category header: fold chevron, name, and a right-aligned function count. Click toggles fold. */
+    private void renderCategoryRow(GuiGraphics g, CategoryEntry ce, int x, int y, int w, int mouseX, int mouseY) {
+        var c = UITheme.colors();
+        boolean hovered = dragging == null && KeybindViewerScreen.inside(mouseX, mouseY, x, y, w, CAT_H);
+        if (hovered) {
+            UITheme.fillRoundedRectFast(g, x, y, w, CAT_H - 1, 4, UITheme.withAlpha(c.widgetBg(), 0x66));
+        }
+        int textY = y + (CAT_H - font.lineHeight) / 2;
+        String chev = ce.collapsed() ? "▸" : "▾";
+        g.drawString(font, chev, x + 2, textY, hovered ? c.textPrimary() : c.textSecondary(), false);
+        int labelX = x + 2 + font.width(chev) + 4;
+        String count = Integer.toString(ce.count());
+        int countW = font.width(count);
+        String name = KeybindViewerScreen.fitToWidth(font, ce.name(), w - (labelX - x) - countW - 8);
+        g.drawString(font, name, labelX, textY, c.accentLight(), false);
+        g.drawString(font, count, x + w - countW - 2, textY, UITheme.withAlpha(c.textMuted(), 0xC8), false);
     }
 
     private void renderFuncRow(GuiGraphics g, FuncEntry fe, int x, int y, int w, boolean hovered, boolean selected) {
@@ -564,6 +667,10 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         List<CalloutItem> bottom = new ArrayList<>();
         List<CalloutItem> left = new ArrayList<>();
         List<CalloutItem> right = new ArrayList<>();
+        // Capacity (≈ chips that fit) per usable edge, plus a running load count, so each key's
+        // labels land on its less-crowded adjacent edge instead of all piling onto the nearest one.
+        EnumMap<CalloutSide, Integer> capacity = edgeCapacities();
+        EnumMap<CalloutSide, Integer> load = new EnumMap<>(CalloutSide.class);
         int hidden = 0;
         int conflicts = 0;
         int labelledKeys = 0;
@@ -584,7 +691,8 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
             int cx = kx + kw / 2;
             int cy = ky + kh / 2;
             // Keep all of one key's functions on the same side, one chip per function.
-            List<CalloutItem> side = switch (assignSide(cx, cy)) {
+            CalloutSide chosen = chooseSide(cx, cy, capacity, load);
+            List<CalloutItem> side = switch (chosen) {
                 case TOP -> top;
                 case BOTTOM -> bottom;
                 case LEFT -> left;
@@ -594,6 +702,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
                 side.add(new CalloutItem(glfw, kx, ky, kw, kh, cx, cy,
                         info.actionName(), info.translationKey()));
             }
+            load.merge(chosen, shown.size(), Integer::sum);
         }
         int total = top.size() + bottom.size() + left.size() + right.size();
         renderAnnotationSummary(g, labelledKeys, conflicts, hidden);
@@ -606,20 +715,84 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         placeColumn(g, right, false, chipH, mouseX, mouseY);
     }
 
-    /** Send each key to the edge it is proportionally closest to (so labels ring the keyboard and
-     *  every gutter is used), falling through the remaining edges when the nearest has no room. */
-    private CalloutSide assignSide(int cx, int cy) {
+    /**
+     * Pick which edge a key's labels go to. The candidates are the key's two <em>adjacent</em> edges
+     * — its horizontal one ({@code h}) and vertical one ({@code v}) — since a leader to either stays
+     * on the key's own side and never crosses the keyboard. Between those two we take whichever has
+     * the lower load ratio (used/capacity), nudging toward the proximity-dominant edge so nearby keys
+     * still prefer their natural side. This rings the labels around every free gutter instead of
+     * letting a cluster of keys (e.g. WASD on a compact board) all pile onto a single nearest edge.
+     */
+    private CalloutSide chooseSide(int cx, int cy,
+                                   EnumMap<CalloutSide, Integer> capacity, EnumMap<CalloutSide, Integer> load) {
         float cxC = keyboardX + keyboardW / 2f;
         float cyC = keyboardY + keyboardH / 2f;
         float nx = (cx - cxC) / Math.max(1f, keyboardW / 2f);
         float ny = (cy - cyC) / Math.max(1f, keyboardH / 2f);
         CalloutSide h = nx < 0 ? CalloutSide.LEFT : CalloutSide.RIGHT;
         CalloutSide v = ny < 0 ? CalloutSide.TOP : CalloutSide.BOTTOM;
-        CalloutSide[] order = Math.abs(nx) > Math.abs(ny)
-                ? new CalloutSide[]{h, v, opposite(v), opposite(h)}
-                : new CalloutSide[]{v, h, opposite(h), opposite(v)};
-        for (CalloutSide s : order) if (edgeAvailable(s)) return s;
-        return order[0];
+        CalloutSide nearer = Math.abs(nx) > Math.abs(ny) ? h : v;
+
+        CalloutSide best = null;
+        float bestScore = Float.MAX_VALUE;
+        for (CalloutSide s : new CalloutSide[]{h, v}) {
+            int cap = capacity.getOrDefault(s, 0);
+            if (cap <= 0) continue;
+            float ratio = load.getOrDefault(s, 0) / (float) cap;
+            // Bias the proximity-dominant edge so ties and near-ties keep the shorter leader.
+            float score = ratio + (s == nearer ? -0.10f : 0f);
+            if (score < bestScore) {
+                bestScore = score;
+                best = s;
+            }
+        }
+        if (best != null) return best;
+        // Both adjacent edges are unusable (no gutter): spill to whichever opposite edge has room.
+        for (CalloutSide s : new CalloutSide[]{opposite(v), opposite(h)}) {
+            if (capacity.getOrDefault(s, 0) > 0) return s;
+        }
+        return nearer;
+    }
+
+    /** Approximate label capacity (chips that fit before force-overlap) of each usable edge. */
+    private EnumMap<CalloutSide, Integer> edgeCapacities() {
+        EnumMap<CalloutSide, Integer> cap = new EnumMap<>(CalloutSide.class);
+        int chipH = font.lineHeight + 4;
+        cap.put(CalloutSide.TOP, edgeAvailable(CalloutSide.TOP) ? bandCapacity(true, chipH) : 0);
+        cap.put(CalloutSide.BOTTOM, edgeAvailable(CalloutSide.BOTTOM) ? bandCapacity(false, chipH) : 0);
+        cap.put(CalloutSide.LEFT, edgeAvailable(CalloutSide.LEFT) ? columnCapacity(true) : 0);
+        cap.put(CalloutSide.RIGHT, edgeAvailable(CalloutSide.RIGHT) ? columnCapacity(false) : 0);
+        return cap;
+    }
+
+    /** Mirrors {@link #placeBand}'s lane math: lanes × (band span / a typical chip width). */
+    private int bandCapacity(boolean topSide, int chipH) {
+        int near = topSide ? keyboardY - CALLOUT_KB_MARGIN : keyboardY + keyboardH + CALLOUT_KB_MARGIN;
+        int far = topSide ? boardTop + SUMMARY_H + 5 : boardTop + boardH - 4;
+        int depth = Math.abs(far - near);
+        int laneStep = chipH + CALLOUT_LANE_GAP;
+        int maxLanes = Mth.clamp((depth + CALLOUT_LANE_GAP) / laneStep, 1, 4);
+        int axisSpan = Math.max(1, boardW - 4);
+        return Math.max(1, maxLanes * axisSpan / 96);
+    }
+
+    /** Mirrors {@link #placeColumn}'s lane math: lanes × (column span / chip height). */
+    private int columnCapacity(boolean leftSide) {
+        int near = leftSide ? keyboardX - CALLOUT_KB_MARGIN : keyboardX + keyboardW + CALLOUT_KB_MARGIN;
+        int far = leftSide ? boardX + 2 : boardX + boardW - 2;
+        int depth = Math.abs(near - far);
+        int laneGapX = 6;
+        int maxLanes = 1;
+        for (int l = 3; l >= 1; l--) {
+            int w = (depth - (l - 1) * laneGapX) / l;
+            if (l == 1 || w >= 64) {
+                maxLanes = l;
+                break;
+            }
+        }
+        int chipH = font.lineHeight + 4;
+        int axisSpan = Math.max(1, boardH - SUMMARY_H - 6);
+        return Math.max(1, maxLanes * axisSpan / (chipH + CALLOUT_LANE_GAP));
     }
 
     private static CalloutSide opposite(CalloutSide s) {
@@ -652,7 +825,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     private static void shelfPack(int n, int[] size, int[] desired, int axisMin, int axisMax,
                                   int gap, int maxLanes, int[] outLane, int[] outStart) {
         int[] laneEnd = new int[maxLanes];
-        for (int l = 0; l < maxLanes; l++) laneEnd[l] = axisMin - gap;
+        Arrays.fill(laneEnd, axisMin - gap);
         for (int i = 0; i < n; i++) {
             int bestLane = -1;
             int bestStart = 0;
@@ -717,7 +890,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
                            int chipH, int mouseX, int mouseY) {
         int n = items.size();
         if (n == 0) return;
-        items.sort((a, b) -> Integer.compare(a.cx(), b.cx()));
+        items.sort(Comparator.comparingInt(CalloutItem::cx));
         int near = topSide ? keyboardY - CALLOUT_KB_MARGIN : keyboardY + keyboardH + CALLOUT_KB_MARGIN;
         int far = topSide ? boardTop + SUMMARY_H + 5 : boardTop + boardH - 4;
         int depth = Math.abs(far - near);
@@ -767,7 +940,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         // Pass 2: chips.
         for (int i = 0; i < n; i++) {
             renderCalloutChip(g, items.get(i), startX[i], yTop[i], size[i], chipH,
-                    topSide ? CalloutSide.TOP : CalloutSide.BOTTOM, hover[i], accent[i]);
+                    topSide ? CalloutSide.TOP : CalloutSide.BOTTOM, hover[i], accent[i], lane[i]);
         }
     }
 
@@ -776,7 +949,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
                              int chipH, int mouseX, int mouseY) {
         int n = items.size();
         if (n == 0) return;
-        items.sort((a, b) -> Integer.compare(a.cy(), b.cy()));
+        items.sort(Comparator.comparingInt(CalloutItem::cy));
         int near = leftSide ? keyboardX - CALLOUT_KB_MARGIN : keyboardX + keyboardW + CALLOUT_KB_MARGIN;
         int far = leftSide ? boardX + 2 : boardX + boardW - 2;
         int depth = Math.abs(near - far);
@@ -831,7 +1004,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         // Pass 2: chips.
         for (int i = 0; i < n; i++) {
             renderCalloutChip(g, items.get(i), chipX[i], startY[i], chipW[i], chipH,
-                    leftSide ? CalloutSide.LEFT : CalloutSide.RIGHT, hover[i], accent[i]);
+                    leftSide ? CalloutSide.LEFT : CalloutSide.RIGHT, hover[i], accent[i], lane[i]);
         }
     }
 
@@ -924,6 +1097,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     }
 
     private FuncEntry funcRowAt(double mouseX, double mouseY) {
+        if (functionsCollapsed) return null;
         int listTop = listTop();
         int listH = listHeight();
         int innerX = BODY_PAD + PANEL_PAD;
@@ -941,6 +1115,26 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         return null;
     }
 
+    /** Category header at the point (for fold toggling), or null. */
+    private String categoryAt(double mouseX, double mouseY) {
+        if (functionsCollapsed) return null;
+        int listTop = listTop();
+        int listH = listHeight();
+        int innerX = BODY_PAD + PANEL_PAD;
+        int innerW = PANEL_W - PANEL_PAD * 2;
+        if (!KeybindViewerScreen.inside(mouseX, mouseY, innerX, listTop, innerW, listH)) return null;
+        int drawY = listTop - listScroll;
+        for (Object entry : entries) {
+            int eh = entry instanceof CategoryEntry ? CAT_H : ROW_H;
+            if (entry instanceof CategoryEntry ce
+                    && KeybindViewerScreen.inside(mouseX, mouseY, innerX, drawY, innerW, CAT_H)) {
+                return ce.name();
+            }
+            drawY += eh;
+        }
+        return null;
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         applyFixedScaleMetrics();
@@ -948,18 +1142,33 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         double my = fixedMouseY(mouseY);
         int innerX = BODY_PAD + PANEL_PAD;
         int innerW = PANEL_W - PANEL_PAD * 2;
-        if (KeybindViewerScreen.inside(mx, my, innerX, FILTER_Y, innerW, FILTER_H)) {
-            modDropdownOpen = !modDropdownOpen;
-            modDropdownScroll = 0;
+        // Collapse/expand the functions panel. When folded, a click anywhere on the rail expands it.
+        int[] toggle = panelToggleRect();
+        if (KeybindViewerScreen.inside(mx, my, toggle[0], toggle[1], toggle[2], toggle[3])) {
+            toggleFunctionsCollapsed();
             return true;
         }
-        if (modDropdownOpen) {
-            // Selecting a row applies the filter; clicking anywhere else just closes the dropdown.
-            handleModDropdownClick(mx, my, innerX, innerW);
-            modDropdownOpen = false;
-            return true;
+        if (functionsCollapsed) {
+            int railH = height - PANEL_TOP - FOOTER_H - 4;
+            if (KeybindViewerScreen.inside(mx, my, BODY_PAD, PANEL_TOP, PANEL_COLLAPSED_W, railH)) {
+                toggleFunctionsCollapsed();
+                return true;
+            }
         }
-        if (handleSearchClearClick(mx, my)) return true;
+        if (!functionsCollapsed) {
+            if (KeybindViewerScreen.inside(mx, my, innerX, FILTER_Y, innerW, FILTER_H)) {
+                modDropdownOpen = !modDropdownOpen;
+                modDropdownScroll = 0;
+                return true;
+            }
+            if (modDropdownOpen) {
+                // Selecting a row applies the filter; clicking anywhere else just closes the dropdown.
+                handleModDropdownClick(mx, my, innerX, innerW);
+                modDropdownOpen = false;
+                return true;
+            }
+            if (handleSearchClearClick(mx, my)) return true;
+        }
         if (super.mouseClicked(mx, my, button)) return true;
         if (button == 0) {
             Integer key = keyAt(mx, my);
@@ -980,6 +1189,13 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
                         return true;
                     }
                 }
+            }
+            // Click a category header to fold / unfold its function rows.
+            String cat = categoryAt(mx, my);
+            if (cat != null) {
+                if (!collapsedCategories.remove(cat)) collapsedCategories.add(cat);
+                rebuildEntries();
+                return true;
             }
             // Press on a palette row: arm for either a click (select) or a drag (drag-bind).
             FuncEntry fe = funcRowAt(mx, my);
@@ -1047,10 +1263,10 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         return null;
     }
 
-    private boolean handleModDropdownClick(double mouseX, double mouseY, int x, int w) {
+    private void handleModDropdownClick(double mouseX, double mouseY, int x, int w) {
         int y = FILTER_Y + FILTER_H + 2;
         int h = height - y - FOOTER_H - 8;
-        if (!KeybindViewerScreen.inside(mouseX, mouseY, x, y, w, h)) return false;
+        if (!KeybindViewerScreen.inside(mouseX, mouseY, x, y, w, h)) return;
         List<String> ids = modIds();
         int visible = Math.max(1, (h - 6) / MOD_ROW_H);
         int rowY = y + 3;
@@ -1060,11 +1276,10 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
                 modDropdownOpen = false;
                 listScroll = 0;
                 rebuildEntries();
-                return true;
+                return;
             }
             rowY += MOD_ROW_H;
         }
-        return true; // click inside the dropdown panel (e.g. gap) is consumed
     }
 
     private boolean handleSearchClearClick(double mouseX, double mouseY) {
@@ -1141,7 +1356,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
             modDropdownScroll = Math.max(0, modDropdownScroll - (int) Math.signum(scrollY));
             return true;
         }
-        if (mx < BODY_PAD + PANEL_W) {
+        if (!functionsCollapsed && mx < BODY_PAD + PANEL_W) {
             listScroll = Mth.clamp(listScroll - (int) (scrollY * ROW_H * 2), 0,
                     Math.max(0, totalListH - listHeight()));
             return true;
@@ -1222,6 +1437,6 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     private record CalloutItem(int glfw, int kx, int ky, int kw, int kh, int cx, int cy,
                                String text, String mappingName) {}
     private record CalloutHit(int x, int y, int w, int h, String mappingName, int glfwKey) {}
-    private record CategoryEntry(String name) {}
+    private record CategoryEntry(String name, int count, boolean collapsed) {}
     private record FuncEntry(KeyMapping mapping) {}
 }
