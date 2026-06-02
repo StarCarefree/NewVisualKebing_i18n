@@ -20,10 +20,12 @@ import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A second visual keyboard screen, distinct from {@link KeybindViewerScreen}: it lists every
@@ -61,11 +63,19 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     private MCButton layoutButton;
     private MCButton scopeButton;
 
-    // Annotation map: when true every bound key gets a leader-line callout; when false only the
-    // bindings of the mod-filter selection are labelled (others render as faint "hidden" keys).
-    private boolean annotateAllMods = true;
+    // Annotation map scope: label every bound key, only the mod-filter selection, or nothing.
+    private enum AnnotateScope {
+        ALL, SELECTED, OFF;
+        AnnotateScope next() {
+            return values()[(ordinal() + 1) % values().length];
+        }
+    }
+    private AnnotateScope annotateScope = AnnotateScope.ALL;
 
     private final List<Object> entries = new ArrayList<>();
+    // Names of the mappings currently shown in the palette list (mod + search filtered); the
+    // SELECTED annotation scope mirrors exactly this set.
+    private final Set<String> listedMappingNames = new HashSet<>();
     private int listScroll;
     private int totalListH;
 
@@ -84,6 +94,8 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     private int boardH;
     private boolean calloutsEnabled;
     private Integer hoveredCalloutKey;
+    // Per-frame callout chip rects so a single function's label can be grabbed and dragged.
+    private final List<CalloutHit> calloutHits = new ArrayList<>();
 
     private float animTick;
 
@@ -153,7 +165,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         scopeButton = MCButton.create(xScope, btnY, scopeW, btnH,
                 annotateLabel(),
                 b -> {
-                    annotateAllMods = !annotateAllMods;
+                    annotateScope = annotateScope.next();
                     b.setMessage(annotateLabel());
                 });
         addRenderableWidget(scopeButton);
@@ -163,6 +175,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
 
     private void rebuildEntries() {
         entries.clear();
+        listedMappingNames.clear();
         String q = searchBox == null ? "" : searchBox.getValue().toLowerCase(Locale.ROOT).trim();
         Map<String, List<KeyMapping>> grouped = new LinkedHashMap<>();
         for (KeyMapping km : profileStore.sortedMappings(Minecraft.getInstance().options.keyMappings)) {
@@ -184,6 +197,7 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
             h += CAT_H;
             for (KeyMapping km : e.getValue()) {
                 entries.add(new FuncEntry(km));
+                listedMappingNames.add(km.getName());
                 h += ROW_H;
             }
         }
@@ -195,10 +209,10 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     private int listHeight() { return height - listTop() - FOOTER_H - 8; }
 
     private static final int SUMMARY_H = 18;
-    private static final int CALLOUT_GAP = 7;
     private static final int CALLOUT_LANE_GAP = 3;
-    private static final int MIN_CALLOUT_GUTTER = 34;
-    private static final int MIN_CALLOUT_BAND = 18;
+    // Standoff between the keyboard and the nearest label tier, so chips never hug the keys.
+    private static final int CALLOUT_KB_MARGIN = 18;
+    private static final int MIN_CALLOUT_GUTTER = 46;
 
     private void layoutBoard() {
         boardX = BODY_PAD + PANEL_W + COL_GAP;
@@ -238,6 +252,9 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         dragMouseY = my;
         layoutBoard();
         overUnbindZone = dragging != null && insideUnbindZone(mx, my);
+        // Callouts are drawn after the keyboard, so reuse last frame's hovered key to light up the
+        // matching key while the cursor is over its label chip (a one-frame lag, imperceptible).
+        Integer prevHoverKey = hoveredCalloutKey;
         hoveredCalloutKey = null;
         // While dragging or while a function is selected, the key under the cursor is the live target;
         // the unbind zone overrides any key it overlaps so a drop there always means "remove".
@@ -254,8 +271,9 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
             long nowMs = System.currentTimeMillis();
             // The keyboard is always drawn solid (never ghosted): every key renders fully, with
             // status colour distinguishing bound keys from free ones. Callouts carry the labels.
+            Integer highlightKey = dropTargetKey != null ? dropTargetKey : prevHoverKey;
             keyboardRenderer.render(graphics, font, currentStyle, keyboardX, keyboardY, keyScale,
-                    dropTargetKey, k -> true, k -> false, k -> false, mx, my, animTick, nowMs);
+                    highlightKey, k -> true, k -> false, k -> false, mx, my, animTick, nowMs);
 
             renderCallouts(graphics, mx, my);
             renderLegend(graphics);
@@ -499,34 +517,24 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     }
 
     private Component annotateLabel() {
-        return Component.translatable(annotateAllMods
-                ? "screen.newvisualkeybing.board.annotate.all"
-                : "screen.newvisualkeybing.board.annotate.filter");
+        return Component.translatable(switch (annotateScope) {
+            case ALL -> "screen.newvisualkeybing.board.annotate.all";
+            case SELECTED -> "screen.newvisualkeybing.board.annotate.filter";
+            case OFF -> "screen.newvisualkeybing.board.annotate.off";
+        });
     }
 
-    /** The binding that should be labelled on a key under the current scope, or null. */
-    private KeyBindingScanner.KeyBindingInfo shownBinding(int glfwKey) {
+    /** Every binding on a key that the current scope labels (one chip each), in display order. */
+    private List<KeyBindingScanner.KeyBindingInfo> shownBindingsFor(int glfwKey) {
+        if (annotateScope == AnnotateScope.OFF) return List.of();
         List<KeyBindingScanner.KeyBindingInfo> binds = scanner.getBindings(glfwKey);
-        if (binds.isEmpty()) return null;
-        if (annotateAllMods || selectedModId == null) return binds.get(0);
+        if (binds.isEmpty()) return List.of();
+        if (annotateScope == AnnotateScope.ALL) return binds;
+        List<KeyBindingScanner.KeyBindingInfo> out = new ArrayList<>();
         for (KeyBindingScanner.KeyBindingInfo info : binds) {
-            if (selectedModId.equals(info.modId())) return info;
+            if (listedMappingNames.contains(info.translationKey())) out.add(info);
         }
-        return null;
-    }
-
-    private int shownCount(int glfwKey) {
-        List<KeyBindingScanner.KeyBindingInfo> binds = scanner.getBindings(glfwKey);
-        if (annotateAllMods || selectedModId == null) return binds.size();
-        int n = 0;
-        for (KeyBindingScanner.KeyBindingInfo info : binds) {
-            if (selectedModId.equals(info.modId())) n++;
-        }
-        return n;
-    }
-
-    private boolean isAnnotated(int glfwKey) {
-        return shownBinding(glfwKey) != null;
+        return out;
     }
 
     private int statusColor(KeyBindingScanner.KeyStatus status) {
@@ -540,77 +548,118 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         };
     }
 
-    /** Leader-line callouts arranged in a ring around the keyboard. */
+    /** Leader-line callouts arranged in tiered lanes around the keyboard. */
     private void renderCallouts(GuiGraphics g, int mouseX, int mouseY) {
-        if (!calloutsEnabled) return;
+        calloutHits.clear();
+        if (!calloutsEnabled || annotateScope == AnnotateScope.OFF) return;
         List<CalloutItem> top = new ArrayList<>();
         List<CalloutItem> bottom = new ArrayList<>();
         List<CalloutItem> left = new ArrayList<>();
         List<CalloutItem> right = new ArrayList<>();
         int hidden = 0;
         int conflicts = 0;
+        int labelledKeys = 0;
         for (KeyboardLayoutData.KeyDef key : KeyboardLayoutData.getKeys(currentStyle)) {
             int glfw = key.glfwKey();
             if (scanner.getBindings(glfw).isEmpty()) continue;
-            if (!isAnnotated(glfw)) {
+            List<KeyBindingScanner.KeyBindingInfo> shown = shownBindingsFor(glfw);
+            if (shown.isEmpty()) {
                 hidden++;
                 continue;
             }
+            labelledKeys++;
+            if (scanner.getStatus(glfw) == KeyBindingScanner.KeyStatus.CONFLICT) conflicts++;
             int kx = key.screenX(keyboardX, keyScale);
             int ky = key.screenY(keyboardY, keyScale);
             int kw = key.screenW(keyScale);
             int kh = key.screenH(keyScale);
             int cx = kx + kw / 2;
             int cy = ky + kh / 2;
-            CalloutItem item = new CalloutItem(glfw, kx, ky, kw, kh, cx, cy);
-            if (scanner.getStatus(glfw) == KeyBindingScanner.KeyStatus.CONFLICT) conflicts++;
-            switch (calloutSide(key, cx, cy)) {
-                case TOP -> top.add(item);
-                case BOTTOM -> bottom.add(item);
-                case LEFT -> left.add(item);
-                case RIGHT -> right.add(item);
+            // Keep all of one key's functions on the same side, one chip per function.
+            List<CalloutItem> side = switch (assignSide(cx, cy)) {
+                case TOP -> top;
+                case BOTTOM -> bottom;
+                case LEFT -> left;
+                case RIGHT -> right;
+            };
+            for (KeyBindingScanner.KeyBindingInfo info : shown) {
+                side.add(new CalloutItem(glfw, kx, ky, kw, kh, cx, cy,
+                        info.actionName(), info.translationKey()));
             }
         }
         int total = top.size() + bottom.size() + left.size() + right.size();
-        renderAnnotationSummary(g, total, conflicts, hidden);
+        renderAnnotationSummary(g, labelledKeys, conflicts, hidden);
         if (total == 0) return;
 
         int chipH = font.lineHeight + 4;
-        placeHorizontalBand(g, top, true, chipH, mouseX, mouseY);
-        placeHorizontalBand(g, bottom, false, chipH, mouseX, mouseY);
-        placeSideColumn(g, left, true, chipH, mouseX, mouseY);
-        placeSideColumn(g, right, false, chipH, mouseX, mouseY);
+        placeBand(g, top, true, chipH, mouseX, mouseY);
+        placeBand(g, bottom, false, chipH, mouseX, mouseY);
+        placeColumn(g, left, true, chipH, mouseX, mouseY);
+        placeColumn(g, right, false, chipH, mouseX, mouseY);
     }
 
-    private CalloutSide calloutSide(KeyboardLayoutData.KeyDef key, int cx, int cy) {
-        if (key.gridY() <= 1.15f && horizontalBandAvailable(true)) return CalloutSide.TOP;
-        if (key.gridY() + key.height() >= currentStyle.heightU() - 0.05f
-                && horizontalBandAvailable(false)) return CalloutSide.BOTTOM;
-        return nearestSide(cx, cy);
+    /** Send each key to the edge it is proportionally closest to (so labels ring the keyboard and
+     *  every gutter is used), falling through the remaining edges when the nearest has no room. */
+    private CalloutSide assignSide(int cx, int cy) {
+        float cxC = keyboardX + keyboardW / 2f;
+        float cyC = keyboardY + keyboardH / 2f;
+        float nx = (cx - cxC) / Math.max(1f, keyboardW / 2f);
+        float ny = (cy - cyC) / Math.max(1f, keyboardH / 2f);
+        CalloutSide h = nx < 0 ? CalloutSide.LEFT : CalloutSide.RIGHT;
+        CalloutSide v = ny < 0 ? CalloutSide.TOP : CalloutSide.BOTTOM;
+        CalloutSide[] order = Math.abs(nx) > Math.abs(ny)
+                ? new CalloutSide[]{h, v, opposite(v), opposite(h)}
+                : new CalloutSide[]{v, h, opposite(h), opposite(v)};
+        for (CalloutSide s : order) if (edgeAvailable(s)) return s;
+        return order[0];
     }
 
-    private CalloutSide nearestSide(int cx, int cy) {
-        int leftSpace = keyboardX - boardX;
-        int rightSpace = boardX + boardW - (keyboardX + keyboardW);
-        int topSpace = keyboardY - boardTop;
-        int bottomSpace = boardTop + boardH - (keyboardY + keyboardH);
-        int best = leftSpace;
-        CalloutSide side = CalloutSide.LEFT;
-        if (rightSpace > best) { best = rightSpace; side = CalloutSide.RIGHT; }
-        if (horizontalBandAvailable(true) && topSpace > best && cy < keyboardY + keyboardH / 2) {
-            best = topSpace;
-            side = CalloutSide.TOP;
+    private static CalloutSide opposite(CalloutSide s) {
+        return switch (s) {
+            case TOP -> CalloutSide.BOTTOM;
+            case BOTTOM -> CalloutSide.TOP;
+            case LEFT -> CalloutSide.RIGHT;
+            case RIGHT -> CalloutSide.LEFT;
+        };
+    }
+
+    private boolean edgeAvailable(CalloutSide side) {
+        return switch (side) {
+            case TOP -> horizontalBandAvailable(true);
+            case BOTTOM -> horizontalBandAvailable(false);
+            case LEFT -> keyboardX - boardX >= MIN_CALLOUT_GUTTER;
+            case RIGHT -> boardX + boardW - (keyboardX + keyboardW) >= MIN_CALLOUT_GUTTER;
+        };
+    }
+
+    /** Greedy shelf packing along a 1D axis: each item keeps its desired position but drops to the
+     *  next lane when it would collide with the previous one, yielding tiered, non-crossing rows. */
+    private static void shelfPack(int n, int[] size, int[] desired, int axisMin, int axisMax,
+                                  int gap, int maxLanes, int[] outLane, int[] outStart) {
+        int[] laneEnd = new int[maxLanes];
+        for (int l = 0; l < maxLanes; l++) laneEnd[l] = axisMin - gap;
+        for (int i = 0; i < n; i++) {
+            int lane = -1;
+            int start = 0;
+            for (int l = 0; l < maxLanes; l++) {
+                int s = Math.max(desired[i], laneEnd[l] + gap);
+                if (s + size[i] <= axisMax) { lane = l; start = s; break; }
+            }
+            if (lane < 0) {
+                lane = 0;
+                for (int l = 1; l < maxLanes; l++) if (laneEnd[l] < laneEnd[lane]) lane = l;
+                start = Mth.clamp(Math.max(desired[i], laneEnd[lane] + gap), axisMin, axisMax - size[i]);
+            }
+            laneEnd[lane] = start + size[i];
+            outLane[i] = lane;
+            outStart[i] = start;
         }
-        if (horizontalBandAvailable(false) && bottomSpace > best && cy >= keyboardY + keyboardH / 2) {
-            side = CalloutSide.BOTTOM;
-        }
-        return side;
     }
 
     private boolean horizontalBandAvailable(boolean topSide) {
         int chipH = font.lineHeight + 4;
-        int bandTop = topSide ? boardTop + SUMMARY_H + 5 : keyboardY + keyboardH + CALLOUT_GAP;
-        int bandBottom = topSide ? keyboardY - CALLOUT_GAP : boardTop + boardH - 4;
+        int bandTop = topSide ? boardTop + SUMMARY_H + 5 : keyboardY + keyboardH + CALLOUT_KB_MARGIN;
+        int bandBottom = topSide ? keyboardY - CALLOUT_KB_MARGIN : boardTop + boardH - 4;
         return bandBottom - bandTop >= chipH;
     }
 
@@ -622,9 +671,12 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         UITheme.fillRoundedRectFast(g, x, y, w, SUMMARY_H, 5, UITheme.withAlpha(c.headerBg(), 0xC8));
         UITheme.drawRoundedBorderFast(g, x, y, w, SUMMARY_H, 5, UITheme.withAlpha(c.widgetBorder(), 0x80));
 
-        String scope = annotateAllMods || selectedModId == null
-                ? Component.translatable("screen.newvisualkeybing.board.filter_all").getString()
-                : selectedModName();
+        String scope = switch (annotateScope) {
+            case ALL -> Component.translatable("screen.newvisualkeybing.board.filter_all").getString();
+            case SELECTED -> selectedModId != null ? selectedModName()
+                    : Component.translatable("screen.newvisualkeybing.board.annotate.list").getString();
+            case OFF -> "";
+        };
         String summary = hidden > 0
                 ? Component.translatable("screen.newvisualkeybing.board.summary_hidden",
                         scope, total, conflicts, hidden).getString()
@@ -635,121 +687,132 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
                 x + 7, y + (SUMMARY_H - font.lineHeight) / 2, c.textSecondary(), false);
     }
 
-    private void placeSideColumn(GuiGraphics g, List<CalloutItem> items, boolean leftSide,
-                                 int chipH, int mouseX, int mouseY) {
-        int n = items.size();
-        if (n == 0) return;
-        int colLeft = leftSide ? boardX + 2 : keyboardX + keyboardW + CALLOUT_GAP;
-        int colRight = leftSide ? keyboardX - CALLOUT_GAP : boardX + boardW - 2;
-        int colW = colRight - colLeft;
-        if (colW < MIN_CALLOUT_GUTTER) return;
-
-        items.sort((a, b) -> Integer.compare(a.cy(), b.cy()));
-        int spanTop = keyboardY;
-        int bottomLimit = keyboardY + keyboardH;
-        int span = Math.max(chipH, bottomLimit - spanTop);
-        int slot = Math.max(font.lineHeight + 1, Math.min(chipH + 3, span / n));
-        int[] yTop = resolvedVerticalSlots(items, spanTop, bottomLimit, chipH, slot);
-        int railX = leftSide ? keyboardX - 4 : keyboardX + keyboardW + 4;
-
-        for (int i = 0; i < n; i++) {
-            CalloutItem item = items.get(i);
-            int labelTop = yTop[i];
-            int chipW = preferredChipWidth(item, colW);
-            int chipX = leftSide ? colRight - chipW : colLeft;
-            boolean hover = calloutHovered(item, chipX, labelTop, chipW, chipH, mouseX, mouseY);
-            int accent = statusColor(scanner.getStatus(item.glfw()));
-            int lineColor = UITheme.withAlpha(accent, hover ? 0xFF : 0xA8);
-            int labelAnchorX = leftSide ? chipX + chipW : chipX;
-            int keyAnchorX = leftSide ? item.kx() : item.kx() + item.kw();
-            int labelYc = labelTop + chipH / 2;
-            fillSeg(g, keyAnchorX, railX, item.cy(), lineColor);
-            fillVSeg(g, railX, item.cy(), labelYc, lineColor);
-            fillSeg(g, railX, labelAnchorX, labelYc, lineColor);
-            g.fill(keyAnchorX - 1, item.cy() - 1, keyAnchorX + 1, item.cy() + 1, lineColor);
-            renderCalloutChip(g, item, chipX, labelTop, chipW, chipH,
-                    leftSide ? CalloutSide.LEFT : CalloutSide.RIGHT, hover, accent);
-        }
-    }
-
-    private void placeHorizontalBand(GuiGraphics g, List<CalloutItem> items, boolean topSide,
-                                     int chipH, int mouseX, int mouseY) {
+    /** Top / bottom band: one chip per function, packed into horizontal lanes stepping outward. */
+    private void placeBand(GuiGraphics g, List<CalloutItem> items, boolean topSide,
+                           int chipH, int mouseX, int mouseY) {
         int n = items.size();
         if (n == 0) return;
         items.sort((a, b) -> Integer.compare(a.cx(), b.cx()));
-        int bandTop = topSide ? boardTop + SUMMARY_H + 5 : keyboardY + keyboardH + CALLOUT_GAP;
-        int bandBottom = topSide ? keyboardY - CALLOUT_GAP : boardTop + boardH - 4;
-        int bandH = bandBottom - bandTop;
-        if (bandH < chipH) return;
+        int near = topSide ? keyboardY - CALLOUT_KB_MARGIN : keyboardY + keyboardH + CALLOUT_KB_MARGIN;
+        int far = topSide ? boardTop + SUMMARY_H + 5 : boardTop + boardH - 4;
+        int depth = Math.abs(far - near);
+        int laneStep = chipH + CALLOUT_LANE_GAP;
+        int maxLanes = Mth.clamp((depth + CALLOUT_LANE_GAP) / laneStep, 1, 4);
+        int axisMin = boardX + 2;
+        int axisMax = boardX + boardW - 2;
 
-        int lanes = Mth.clamp((bandH + CALLOUT_LANE_GAP) / (chipH + CALLOUT_LANE_GAP), 1, 4);
-        int laneMax = Math.max(1, (n + lanes - 1) / lanes);
-        int maxChipW = Mth.clamp((keyboardW - Math.max(0, laneMax - 1) * 4) / laneMax, 38, 116);
-        List<List<CalloutItem>> laneItems = new ArrayList<>();
-        for (int i = 0; i < lanes; i++) laneItems.add(new ArrayList<>());
-        for (int i = 0; i < n; i++) laneItems.get(i % lanes).add(items.get(i));
+        int[] size = new int[n];
+        int[] desired = new int[n];
+        for (int i = 0; i < n; i++) {
+            int cw = preferredChipWidth(items.get(i), 118);
+            size[i] = cw;
+            desired[i] = Mth.clamp(items.get(i).cx() - cw / 2, axisMin, axisMax - cw);
+        }
+        int[] lane = new int[n];
+        int[] startX = new int[n];
+        shelfPack(n, size, desired, axisMin, axisMax, 4, maxLanes, lane, startX);
 
-        for (int lane = 0; lane < lanes; lane++) {
-            List<CalloutItem> row = laneItems.get(lane);
-            if (row.isEmpty()) continue;
-            int y = topSide
-                    ? bandBottom - chipH - lane * (chipH + CALLOUT_LANE_GAP)
-                    : bandTop + lane * (chipH + CALLOUT_LANE_GAP);
-            y = Mth.clamp(y, bandTop, bandBottom - chipH);
-            int rowCount = row.size();
-            for (int i = 0; i < rowCount; i++) {
-                CalloutItem item = row.get(i);
-                int slotLeft = keyboardX + Math.round(i * (keyboardW / (float) rowCount));
-                int slotRight = keyboardX + Math.round((i + 1) * (keyboardW / (float) rowCount)) - 2;
-                int chipW = preferredChipWidth(item, Math.min(maxChipW, Math.max(24, slotRight - slotLeft)));
-                int chipX = Mth.clamp(item.cx() - chipW / 2, slotLeft, Math.max(slotLeft, slotRight - chipW));
-                boolean hover = calloutHovered(item, chipX, y, chipW, chipH, mouseX, mouseY);
-                int accent = statusColor(scanner.getStatus(item.glfw()));
-                int lineColor = UITheme.withAlpha(accent, hover ? 0xFF : 0xA8);
-                int railY = topSide ? keyboardY - 4 : keyboardY + keyboardH + 4;
-                int keyAnchorY = topSide ? item.ky() : item.ky() + item.kh();
-                int labelAnchorX = chipX + chipW / 2;
-                int labelAnchorY = topSide ? y + chipH : y;
-                fillVSeg(g, item.cx(), keyAnchorY, railY, lineColor);
-                fillSeg(g, item.cx(), labelAnchorX, railY, lineColor);
-                fillVSeg(g, labelAnchorX, railY, labelAnchorY, lineColor);
-                g.fill(item.cx() - 1, keyAnchorY - 1, item.cx() + 1, keyAnchorY + 1, lineColor);
-                renderCalloutChip(g, item, chipX, y, chipW, chipH,
-                        topSide ? CalloutSide.TOP : CalloutSide.BOTTOM, hover, accent);
-            }
+        int laneLo = Math.min(near, far);
+        int laneHi = Math.max(near, far) - chipH;
+        int[] yTop = new int[n];
+        boolean[] hover = new boolean[n];
+        int[] accent = new int[n];
+        for (int i = 0; i < n; i++) {
+            yTop[i] = Mth.clamp(topSide ? near - chipH - lane[i] * laneStep : near + lane[i] * laneStep,
+                    laneLo, laneHi);
+            hover[i] = calloutHovered(items.get(i), startX[i], yTop[i], size[i], chipH, mouseX, mouseY);
+            accent[i] = statusColor(scanner.getStatus(items.get(i).glfw()));
+        }
+        // Pass 1: leader lines first, so chips painted afterwards cover any line beneath them.
+        for (int i = 0; i < n; i++) {
+            CalloutItem item = items.get(i);
+            int lineColor = UITheme.withAlpha(accent[i], calloutAlpha(hover[i], lane[i]));
+            int keyAnchorY = topSide ? item.ky() : item.ky() + item.kh();
+            int railY = topSide ? yTop[i] + chipH : yTop[i];
+            fillVSeg(g, item.cx(), keyAnchorY, railY, lineColor);
+            fillSeg(g, item.cx(), startX[i] + size[i] / 2, railY, lineColor);
+            g.fill(item.cx() - 1, keyAnchorY - 1, item.cx() + 1, keyAnchorY + 1, lineColor);
+        }
+        // Pass 2: chips.
+        for (int i = 0; i < n; i++) {
+            renderCalloutChip(g, items.get(i), startX[i], yTop[i], size[i], chipH,
+                    topSide ? CalloutSide.TOP : CalloutSide.BOTTOM, hover[i], accent[i]);
         }
     }
 
-    private int[] resolvedVerticalSlots(List<CalloutItem> items, int top, int bottom, int chipH, int slot) {
+    /** Left / right gutter: one chip per function, packed into vertical lanes stepping outward. */
+    private void placeColumn(GuiGraphics g, List<CalloutItem> items, boolean leftSide,
+                             int chipH, int mouseX, int mouseY) {
         int n = items.size();
-        int[] yTop = new int[n];
-        for (int i = 0; i < n; i++) {
-            yTop[i] = Mth.clamp(items.get(i).cy() - chipH / 2, top, bottom - chipH);
-        }
-        for (int i = 1; i < n; i++) {
-            if (yTop[i] < yTop[i - 1] + slot) yTop[i] = yTop[i - 1] + slot;
-        }
-        if (yTop[n - 1] + chipH > bottom) {
-            yTop[n - 1] = bottom - chipH;
-            for (int i = n - 2; i >= 0; i--) {
-                if (yTop[i] + slot > yTop[i + 1]) yTop[i] = yTop[i + 1] - slot;
+        if (n == 0) return;
+        items.sort((a, b) -> Integer.compare(a.cy(), b.cy()));
+        int near = leftSide ? keyboardX - CALLOUT_KB_MARGIN : keyboardX + keyboardW + CALLOUT_KB_MARGIN;
+        int far = leftSide ? boardX + 2 : boardX + boardW - 2;
+        int depth = Math.abs(near - far);
+        // Fit as many non-overlapping tiers as the gutter allows, each at least 64px wide.
+        int laneGapX = 6;
+        int maxLanes = 1;
+        int laneW = Mth.clamp(depth, 40, 128);
+        for (int l = 3; l >= 1; l--) {
+            int w = (depth - (l - 1) * laneGapX) / l;
+            if (l == 1 || w >= 64) {
+                maxLanes = l;
+                laneW = Mth.clamp(w, 40, 128);
+                break;
             }
         }
-        for (int i = 0; i < n; i++) yTop[i] = Mth.clamp(yTop[i], top, bottom - chipH);
-        return yTop;
+        int laneStep = laneW + laneGapX;
+        int axisMin = boardTop + SUMMARY_H + 4;
+        int axisMax = boardTop + boardH - 2;
+
+        int[] size = new int[n];
+        int[] desired = new int[n];
+        for (int i = 0; i < n; i++) {
+            size[i] = chipH;
+            desired[i] = Mth.clamp(items.get(i).cy() - chipH / 2, axisMin, axisMax - chipH);
+        }
+        int[] lane = new int[n];
+        int[] startY = new int[n];
+        shelfPack(n, size, desired, axisMin, axisMax, CALLOUT_LANE_GAP, maxLanes, lane, startY);
+
+        int[] chipX = new int[n];
+        int[] chipW = new int[n];
+        boolean[] hover = new boolean[n];
+        int[] accent = new int[n];
+        for (int i = 0; i < n; i++) {
+            int laneEdge = leftSide ? near - lane[i] * laneStep : near + lane[i] * laneStep;
+            int avail = leftSide ? laneEdge - far : far - laneEdge;
+            chipW[i] = preferredChipWidth(items.get(i), Mth.clamp(avail, 24, laneW));
+            chipX[i] = leftSide ? laneEdge - chipW[i] : laneEdge;
+            hover[i] = calloutHovered(items.get(i), chipX[i], startY[i], chipW[i], chipH, mouseX, mouseY);
+            accent[i] = statusColor(scanner.getStatus(items.get(i).glfw()));
+        }
+        // Pass 1: leader lines.
+        for (int i = 0; i < n; i++) {
+            CalloutItem item = items.get(i);
+            int lineColor = UITheme.withAlpha(accent[i], calloutAlpha(hover[i], lane[i]));
+            int keyAnchorX = leftSide ? item.kx() : item.kx() + item.kw();
+            int railX = leftSide ? chipX[i] + chipW[i] : chipX[i];
+            fillSeg(g, keyAnchorX, railX, item.cy(), lineColor);
+            fillVSeg(g, railX, item.cy(), startY[i] + chipH / 2, lineColor);
+            g.fill(keyAnchorX - 1, item.cy() - 1, keyAnchorX + 1, item.cy() + 1, lineColor);
+        }
+        // Pass 2: chips.
+        for (int i = 0; i < n; i++) {
+            renderCalloutChip(g, items.get(i), chipX[i], startY[i], chipW[i], chipH,
+                    leftSide ? CalloutSide.LEFT : CalloutSide.RIGHT, hover[i], accent[i]);
+        }
+    }
+
+    /** Outer lanes draw fainter leader lines, reinforcing the tiered depth. */
+    private static int calloutAlpha(boolean hover, int lane) {
+        return hover ? 0xFF : Math.max(0x70, 0xB4 - lane * 0x1C);
     }
 
     private int preferredChipWidth(CalloutItem item, int maxW) {
         int safeMax = Math.max(24, maxW);
-        String fitted = KeybindViewerScreen.fitToWidth(font, calloutText(item.glfw()), safeMax - 12);
+        String fitted = KeybindViewerScreen.fitToWidth(font, item.text(), safeMax - 12);
         return Math.min(safeMax, Math.max(24, font.width(fitted) + 14));
-    }
-
-    private String calloutText(int glfw) {
-        KeyBindingScanner.KeyBindingInfo info = shownBinding(glfw);
-        if (info == null) return "";
-        int count = shownCount(glfw);
-        return count > 1 ? info.actionName() + "  +" + (count - 1) : info.actionName();
     }
 
     private boolean calloutHovered(CalloutItem item, int x, int y, int w, int h, int mouseX, int mouseY) {
@@ -771,8 +834,9 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
             case TOP -> g.fill(x + 1, y + h - 2, x + w - 1, y + h, accent);
             case BOTTOM -> g.fill(x + 1, y, x + w - 1, y + 2, accent);
         }
-        String fitted = KeybindViewerScreen.fitToWidth(font, calloutText(item.glfw()), w - 12);
+        String fitted = KeybindViewerScreen.fitToWidth(font, item.text(), w - 12);
         g.drawString(font, fitted, x + 5, y + (h - font.lineHeight) / 2 + 1, c.textPrimary(), false);
+        calloutHits.add(new CalloutHit(x, y, w, h, item.mappingName(), item.glfw()));
     }
 
     private static void fillSeg(GuiGraphics g, int x1, int x2, int y, int color) {
@@ -784,8 +848,9 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     }
 
     private void renderHoverDetails(GuiGraphics g, int mouseX, int mouseY) {
+        // Hovering any bound key shows its full binding info, regardless of the annotation scope.
         Integer key = hoveredCalloutKey != null ? hoveredCalloutKey : keyAt(mouseX, mouseY);
-        if (key != null && isAnnotated(key)) {
+        if (key != null && !scanner.getBindings(key).isEmpty()) {
             tooltipRenderer.render(g, font, width, height, key, mouseX, mouseY);
         }
     }
@@ -868,6 +933,17 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
                 clearSelection();
                 bindToKey(mapping, key);
                 return true;
+            }
+            // Press on a callout chip: grab that one function so it can be dragged onto another key
+            // (rebind/move) or onto the unbind zone (clear).
+            for (CalloutHit hit : calloutHits) {
+                if (KeybindViewerScreen.inside(mx, my, hit.x(), hit.y(), hit.w(), hit.h())) {
+                    KeyMapping m = mappingByName(hit.mappingName());
+                    if (m != null) {
+                        beginPress(m, hit.glfwKey(), mx, my);
+                        return true;
+                    }
+                }
             }
             // Press on a palette row: arm for either a click (select) or a drag (drag-bind).
             FuncEntry fe = funcRowAt(mx, my);
@@ -1105,7 +1181,11 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     }
 
     private enum CalloutSide { TOP, RIGHT, BOTTOM, LEFT }
-    private record CalloutItem(int glfw, int kx, int ky, int kw, int kh, int cx, int cy) {}
+    /** One label = one bound function on a key. {@code text} is the action name, {@code mappingName}
+     *  the binding's translation key (used to grab it for a drag). */
+    private record CalloutItem(int glfw, int kx, int ky, int kw, int kh, int cx, int cy,
+                               String text, String mappingName) {}
+    private record CalloutHit(int x, int y, int w, int h, String mappingName, int glfwKey) {}
     private record CategoryEntry(String name) {}
     private record FuncEntry(KeyMapping mapping) {}
 }

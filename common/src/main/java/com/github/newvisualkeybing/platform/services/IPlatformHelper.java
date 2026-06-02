@@ -9,6 +9,11 @@ public interface IPlatformHelper {
 
     boolean isModLoaded(String modId);
 
+    /** Ids of every loaded mod, used to attribute keybinds to their owning mod. */
+    default java.util.Set<String> getLoadedModIds() {
+        return java.util.Set.of();
+    }
+
     boolean isDevelopmentEnvironment();
 
     default String getEnvironmentName() {

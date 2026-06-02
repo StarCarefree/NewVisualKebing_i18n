@@ -21,6 +21,13 @@ public class ForgePlatformHelper implements IPlatformHelper {
     }
 
     @Override
+    public java.util.Set<String> getLoadedModIds() {
+        return ModList.get().getMods().stream()
+                .map(net.minecraftforge.forgespi.language.IModInfo::getModId)
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    @Override
     public boolean isDevelopmentEnvironment() {
         return !FMLLoader.isProduction();
     }

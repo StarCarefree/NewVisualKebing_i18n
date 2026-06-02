@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -66,6 +67,21 @@ public class KeyBindingScanner {
     private static final Set<String> VANILLA_CATEGORIES = Set.of(
             "gameplay", "inventory", "movement", "multiplayer", "ui", "misc", "narrator", "creative"
     );
+
+    /** The only namespaces vanilla uses inside a 3-segment key name (e.g. {@code key.hotbar.1}). */
+    private static final Set<String> VANILLA_KEY_NAMESPACES = Set.of("hotbar");
+
+    /** Tokens that appear in keybind translation keys but are never a mod id, so they must not be
+     *  fuzzily matched to a loaded mod (which would create bogus groups like "gui"). */
+    private static final Set<String> GENERIC_TOKENS = Set.of(
+            "key", "keys", "keybind", "keybinds", "keybinding", "keybindings", "binding", "bindings",
+            "categories", "category", "minecraft", "gui", "hud", "misc", "mod", "mods", "client",
+            "common", "main", "input", "inputs", "control", "controls", "setting", "settings",
+            "options", "option", "menu", "menus", "screen", "screens", "action", "actions",
+            "toggle", "open", "close", "show", "hide");
+
+    /** Lazily-cached lower-cased ids of all loaded mods (fixed for the JVM run). */
+    private static volatile Set<String> cachedLoadedModIds;
 
     private final Map<Integer, List<KeyBindingInfo>> keyboardBindings = new LinkedHashMap<>();
     private final Map<Integer, List<KeyBindingInfo>> mouseBindings = new LinkedHashMap<>();
@@ -534,49 +550,117 @@ public class KeyBindingScanner {
     }
 
     private static String resolveModId(String name, String category) {
-        
-        if (name != null && name.startsWith("key.")) {
-            String[] parts = name.split("\\.", 3);
-            if (parts.length >= 2) {
-                String candidate = parts[1];
-                if (!"minecraft".equals(candidate) && Services.PLATFORM.isModLoaded(candidate)) return candidate;
-            }
-        }
-        
-        if (category != null && category.startsWith("key.categories.")) {
-            String suffix = category.substring("key.categories.".length());
-            String suffixLower = suffix.toLowerCase(Locale.ROOT);
-            if (!VANILLA_CATEGORIES.contains(suffixLower)) {
-                if (Services.PLATFORM.isModLoaded(suffix))      return suffix;
-                if (Services.PLATFORM.isModLoaded(suffixLower)) return suffixLower;
-            }
-        }
-        
-        if (name != null) {
-            for (String part : name.split("\\.")) {
-                if (part.isEmpty()) continue;
-                String lower = part.toLowerCase(Locale.ROOT);
-                if ("key".equals(lower) || "minecraft".equals(lower)) continue;
-                if (Services.PLATFORM.isModLoaded(lower)) return lower;
-            }
-        }
-        
-        if (category != null) {
-            for (String part : category.split("\\.")) {
-                if (part.isEmpty()) continue;
-                String lower = part.toLowerCase(Locale.ROOT);
-                if ("key".equals(lower) || "categories".equals(lower) || "minecraft".equals(lower)) continue;
-                if (Services.PLATFORM.isModLoaded(lower)) return lower;
-            }
-        }
+        Set<String> loaded = loadedModIds();
+
+        // 1) Any token that IS a loaded mod id (exact). Safe even for vanilla keys and the most
+        //    reliable signal — classify strictly by real modid whenever the key names it.
+        for (String t : tokenize(name)) if (loaded.contains(t)) return t;
+        for (String t : tokenize(category)) if (loaded.contains(t)) return t;
+
+        // 2) Decide whether this even looks modded. Vanilla keys are key.<flat> / key.hotbar.N with a
+        //    vanilla category and must never be fuzzily matched to a mod (avoids false positives).
+        String ns = deriveNamespace(name);
+        String catNs = customCategoryNamespace(category);
+        boolean modded = ns != null || catNs != null || (name != null && !name.startsWith("key."));
+        if (!modded) return "minecraft";
+
+        // 3) Map a name/category token onto a real loaded mod id by prefix/substring, so e.g. an
+        //    "xaero"/"worldmap" token resolves to the actual "xaerominimap"/"xaeroworldmap" id.
+        String matched = matchLoadedModId(loaded, tokenize(name), tokenize(category));
+        if (matched != null) return matched;
+
+        // 4) No loaded id matched: fall back to a non-generic namespace so the binding still groups
+        //    under the mod (never a generic token like "gui").
+        if (ns != null && !isGenericToken(ns)) return ns;
+        if (catNs != null && !isGenericToken(catNs)) return catNs;
         return "minecraft";
+    }
+
+    private static Set<String> loadedModIds() {
+        Set<String> cached = cachedLoadedModIds;
+        if (cached == null) {
+            cached = new HashSet<>();
+            for (String id : Services.PLATFORM.getLoadedModIds()) {
+                if (id != null && !id.isBlank()) cached.add(id.toLowerCase(Locale.ROOT));
+            }
+            cachedLoadedModIds = cached;
+        }
+        return cached;
+    }
+
+    private static List<String> tokenize(String s) {
+        List<String> tokens = new ArrayList<>();
+        if (s == null) return tokens;
+        for (String part : s.toLowerCase(Locale.ROOT).split("[._]")) {
+            if (!part.isEmpty()) tokens.add(part);
+        }
+        return tokens;
+    }
+
+    private static boolean isGenericToken(String t) {
+        return t == null || t.length() < 3 || GENERIC_TOKENS.contains(t);
+    }
+
+    /** Best loaded mod id matching any non-generic token by prefix/substring; longest token wins. */
+    private static String matchLoadedModId(Set<String> loaded, List<String> nameTokens, List<String> catTokens) {
+        if (loaded.isEmpty()) return null;
+        List<String> tokens = new ArrayList<>(nameTokens);
+        tokens.addAll(catTokens);
+        tokens.sort((a, b) -> b.length() - a.length()); // most specific tokens first
+        for (String t : tokens) {
+            if (t.length() < 4 || isGenericToken(t)) continue;
+            String best = null;
+            for (String mid : loaded) {
+                if ("minecraft".equals(mid)) continue;
+                if (mid.equals(t) || mid.startsWith(t) || t.startsWith(mid) || mid.contains(t)) {
+                    if (best == null || mid.length() < best.length()) best = mid;
+                }
+            }
+            if (best != null) return best;
+        }
+        return null;
+    }
+
+    /** Best-effort mod namespace from a key name known not to be a confirmed-loaded mod, or null. */
+    private static String deriveNamespace(String name) {
+        if (name == null || name.isEmpty()) return null;
+        String[] parts = name.split("\\.");
+        if (!name.startsWith("key.")) {
+            // "<modid>.keybind.<action>" style (e.g. Iris): the first segment is the namespace.
+            String t = parts[0].toLowerCase(Locale.ROOT);
+            return t.isEmpty() || "minecraft".equals(t) ? null : t;
+        }
+        if (parts.length >= 3) {
+            // "key.<modid>.<action>".
+            String t = parts[1].toLowerCase(Locale.ROOT);
+            return t.isEmpty() || "minecraft".equals(t) || VANILLA_KEY_NAMESPACES.contains(t) ? null : t;
+        }
+        if (parts.length == 2) {
+            // "key.<word>": vanilla flat keys never contain an underscore, so only a modid-prefixed
+            // word (e.g. xaero_open_settings) is treated as modded — grouped by that prefix.
+            String w = parts[1].toLowerCase(Locale.ROOT);
+            int underscore = w.indexOf('_');
+            if (underscore > 1) return w.substring(0, underscore);
+        }
+        return null;
+    }
+
+    /** The leading token of a non-vanilla {@code key.categories.*} group, or null for vanilla. */
+    private static String customCategoryNamespace(String category) {
+        if (category == null || !category.startsWith("key.categories.")) return null;
+        String suffix = category.substring("key.categories.".length()).toLowerCase(Locale.ROOT);
+        if (suffix.isEmpty() || VANILLA_CATEGORIES.contains(suffix)) return null;
+        int dot = suffix.indexOf('.');
+        return dot > 0 ? suffix.substring(0, dot) : suffix;
     }
 
     private static String resolveModName(String modId, String categoryKey) {
         if ("minecraft".equals(modId)) return "Minecraft";
         String fromPlatform = Services.PLATFORM.getModName(modId);
         if (fromPlatform != null && !fromPlatform.isBlank()) return fromPlatform;
-        if (categoryKey != null) {
+        // Only borrow the category's display name when it is a mod's own custom category; reusing a
+        // vanilla category label (e.g. "Gameplay") would mislabel the mod.
+        if (customCategoryNamespace(categoryKey) != null) {
             String translated = Component.translatable(categoryKey).getString();
             if (translated != null && !translated.equals(categoryKey) && !translated.isBlank()) return translated;
         }
