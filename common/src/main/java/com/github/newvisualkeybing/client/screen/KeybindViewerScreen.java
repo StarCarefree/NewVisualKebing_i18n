@@ -701,6 +701,15 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         return TextFitCache.fitByChars(font, text, maxW);
     }
 
+    /**
+     * Width for a header/toolbar button sized to its label (7px padding each side) and clamped to
+     * [min, max]. Shared by the secondary screens so buttons hug their text instead of using
+     * oversized fixed widths.
+     */
+    static int buttonWidth(net.minecraft.client.gui.Font font, Component label, int min, int max) {
+        return Mth.clamp(font.width(label.getString()) + 14, min, max);
+    }
+
     static void renderActionButton(GuiGraphics g, net.minecraft.client.gui.Font font,
                                    int x, int y, int w, int h, String label, int accent, boolean hovered) {
         var c = UITheme.colors();

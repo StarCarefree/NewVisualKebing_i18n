@@ -80,11 +80,11 @@ public class KeybindEditScreen extends FixedScaleScreen {
 
         searchX = KeybindProfilePanel.WIDTH + 22;
         int btnGap = 6;
-        int backW = 60;
-        int viewerW = 96;
-        int boardW = 84;
-        int comboW = 96;
-        int resetW = 110;
+        int backW = KeybindViewerScreen.buttonWidth(font, Component.translatable("screen.newvisualkeybing.viewer.back"), 40, 60);
+        int viewerW = KeybindViewerScreen.buttonWidth(font, Component.translatable("screen.newvisualkeybing.viewer.open_visual"), 56, 96);
+        int boardW = KeybindViewerScreen.buttonWidth(font, Component.translatable("screen.newvisualkeybing.viewer.board.open"), 56, 84);
+        int comboW = KeybindViewerScreen.buttonWidth(font, Component.translatable("screen.newvisualkeybing.viewer.combo.open"), 56, 96);
+        int resetW = KeybindViewerScreen.buttonWidth(font, Component.translatable("screen.newvisualkeybing.viewer.reset_all"), 64, 110);
         int xReset = width - 12 - resetW;
         int xBoard = xReset - btnGap - boardW;
         int xViewer = xBoard - btnGap - viewerW;

@@ -146,9 +146,17 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
 
         int btnH = 20;
         int btnY = (HEADER_H - btnH) / 2;
-        int backW = 56;
-        int layoutW = 92;
-        int scopeW = 104;
+        int backW = KeybindViewerScreen.buttonWidth(font, Component.translatable("gui.done"), 40, 56);
+        // Layout/scope cycle through labels, so size to the widest the button will ever show.
+        int layoutLabelW = 0;
+        for (KeyboardLayoutData.Style s : KeyboardLayoutData.Style.values()) {
+            layoutLabelW = Math.max(layoutLabelW, font.width(s.label()));
+        }
+        int layoutW = Mth.clamp(layoutLabelW + 14, 56, 92);
+        int scopeLabelW = Math.max(font.width(Component.translatable("screen.newvisualkeybing.board.annotate.all").getString()),
+                Math.max(font.width(Component.translatable("screen.newvisualkeybing.board.annotate.filter").getString()),
+                        font.width(Component.translatable("screen.newvisualkeybing.board.annotate.off").getString())));
+        int scopeW = Mth.clamp(scopeLabelW + 14, 64, 104);
         int xBack = width - 8 - backW;
         int xLayout = xBack - 6 - layoutW;
         int xScope = xLayout - 6 - scopeW;
@@ -632,27 +640,44 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         };
     }
 
-    /** Greedy shelf packing along a 1D axis: each item keeps its desired position but drops to the
-     *  next lane when it would collide with the previous one, yielding tiered, non-crossing rows. */
+    /**
+     * Tiered packing along a 1D axis (items pre-sorted by anchor position). Each item is placed in
+     * the lane that requires the <em>smallest forward shift</em> from its anchor-aligned desired
+     * position, rather than the first lane that merely fits. Hugging the anchor keeps every leader
+     * almost straight (a near-vertical/near-horizontal stub), which both removes line crossings and
+     * yields a clean tiered "comb": items sit right next to their key, only stepping to an outer
+     * lane when a nearer one is occupied. Order is preserved within a lane because {@code laneEnd}
+     * is monotonic and the inputs are sorted, so leaders never reorder and cross.
+     */
     private static void shelfPack(int n, int[] size, int[] desired, int axisMin, int axisMax,
                                   int gap, int maxLanes, int[] outLane, int[] outStart) {
         int[] laneEnd = new int[maxLanes];
         for (int l = 0; l < maxLanes; l++) laneEnd[l] = axisMin - gap;
         for (int i = 0; i < n; i++) {
-            int lane = -1;
-            int start = 0;
+            int bestLane = -1;
+            int bestStart = 0;
+            int bestShift = Integer.MAX_VALUE;
             for (int l = 0; l < maxLanes; l++) {
                 int s = Math.max(desired[i], laneEnd[l] + gap);
-                if (s + size[i] <= axisMax) { lane = l; start = s; break; }
+                if (s + size[i] > axisMax) continue;        // no room left in this lane
+                int shift = s - desired[i];                 // >= 0: how far past the anchor we pushed
+                if (shift < bestShift) {                    // prefer the least-shifted (lower lane on ties)
+                    bestShift = shift;
+                    bestLane = l;
+                    bestStart = s;
+                }
+                if (shift == 0) break;                      // can't do better than no shift
             }
-            if (lane < 0) {
-                lane = 0;
-                for (int l = 1; l < maxLanes; l++) if (laneEnd[l] < laneEnd[lane]) lane = l;
-                start = Mth.clamp(Math.max(desired[i], laneEnd[lane] + gap), axisMin, axisMax - size[i]);
+            if (bestLane < 0) {
+                // Every lane is packed to the right edge: drop into the emptiest one and clamp.
+                bestLane = 0;
+                for (int l = 1; l < maxLanes; l++) if (laneEnd[l] < laneEnd[bestLane]) bestLane = l;
+                bestStart = Mth.clamp(Math.max(desired[i], laneEnd[bestLane] + gap),
+                        axisMin, axisMax - size[i]);
             }
-            laneEnd[lane] = start + size[i];
-            outLane[i] = lane;
-            outStart[i] = start;
+            laneEnd[bestLane] = bestStart + size[i];
+            outLane[i] = bestLane;
+            outStart[i] = bestStart;
         }
     }
 
@@ -701,16 +726,22 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         int axisMin = boardX + 2;
         int axisMax = boardX + boardW - 2;
 
+        // Cap chip width to the per-item share of the band's total lane area, so chips shrink as the
+        // band fills and pack tighter instead of hitting shelfPack's overlapping force-place path.
+        // Long labels truncate (full text stays on the hover tooltip); short ones keep their size.
+        int bandGap = 4;
+        int perChipBudget = (axisMax - axisMin) * maxLanes / n - bandGap;
+        int chipMaxW = Mth.clamp(perChipBudget, 64, 118);
         int[] size = new int[n];
         int[] desired = new int[n];
         for (int i = 0; i < n; i++) {
-            int cw = preferredChipWidth(items.get(i), 118);
+            int cw = preferredChipWidth(items.get(i), chipMaxW);
             size[i] = cw;
             desired[i] = Mth.clamp(items.get(i).cx() - cw / 2, axisMin, axisMax - cw);
         }
         int[] lane = new int[n];
         int[] startX = new int[n];
-        shelfPack(n, size, desired, axisMin, axisMax, 4, maxLanes, lane, startX);
+        shelfPack(n, size, desired, axisMin, axisMax, bandGap, maxLanes, lane, startX);
 
         int laneLo = Math.min(near, far);
         int laneHi = Math.max(near, far) - chipH;
@@ -823,11 +854,16 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     }
 
     private void renderCalloutChip(GuiGraphics g, CalloutItem item, int x, int y, int w, int h,
-                                   CalloutSide side, boolean hover, int accent) {
+                                   CalloutSide side, boolean hover, int accent, int lane) {
         var c = UITheme.colors();
-        int bg = UITheme.withAlpha(hover ? UITheme.lerpColor(c.headerBg(), accent, 0.30f) : c.headerBg(), 0xF0);
+        // Recede outer tiers a little (lower opacity the farther from the keyboard) so the lanes read
+        // as depth layers — the hovered chip always snaps back to full strength and front.
+        int depth = hover ? 0 : Math.min(lane, 3);
+        int bgAlpha = 0xF0 - depth * 0x1A;
+        int borderAlpha = (hover ? 0xE0 : 0x96) - depth * 0x12;
+        int bg = UITheme.withAlpha(hover ? UITheme.lerpColor(c.headerBg(), accent, 0.30f) : c.headerBg(), bgAlpha);
         UITheme.fillRoundedRectFast(g, x, y, w, h, 3, bg);
-        UITheme.drawRoundedBorderFast(g, x, y, w, h, 3, UITheme.withAlpha(accent, hover ? 0xE0 : 0x96));
+        UITheme.drawRoundedBorderFast(g, x, y, w, h, 3, UITheme.withAlpha(accent, borderAlpha));
         switch (side) {
             case LEFT -> g.fill(x + w - 2, y + 1, x + w, y + h - 1, accent);
             case RIGHT -> g.fill(x, y + 1, x + 2, y + h - 1, accent);

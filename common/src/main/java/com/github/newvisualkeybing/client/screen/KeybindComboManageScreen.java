@@ -69,9 +69,9 @@ public class KeybindComboManageScreen extends FixedScaleScreen {
         addRenderableWidget(mappingSearchBox);
 
         int btnGap = 6;
-        int backW = 60;
-        int addW = 110;
-        int clearW = 110;
+        int backW = KeybindViewerScreen.buttonWidth(font, Component.translatable("screen.newvisualkeybing.viewer.back"), 40, 60);
+        int addW = KeybindViewerScreen.buttonWidth(font, Component.translatable("screen.newvisualkeybing.viewer.combo.add"), 56, 110);
+        int clearW = KeybindViewerScreen.buttonWidth(font, Component.translatable("screen.newvisualkeybing.viewer.combo.clear_all"), 64, 110);
         int xClear = width - 12 - clearW;
         int xAdd = xClear - btnGap - addW;
         int xBack = xAdd - btnGap - backW;
