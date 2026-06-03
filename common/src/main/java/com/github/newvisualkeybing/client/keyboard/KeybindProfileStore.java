@@ -45,8 +45,6 @@ public final class KeybindProfileStore {
                 if (local == null) {
                     local = new KeybindProfileStore();
                     INSTANCE = local;
-
-                    KeybindPriorityEnforcer.applyPriority();
                 }
             }
         }
@@ -208,9 +206,18 @@ public final class KeybindProfileStore {
         Profile profile = selectedProfile();
         if (profile == null) return false;
         Map<String, KeyMapping> byName = currentMappingsByName();
+        // Rebuild the live priority map from this profile alone, mirroring the wholesale replace that
+        // combos already get below. Merging in place (the old behaviour) left stale priorities for
+        // every mapping the profile did not mention, so switching to a heterogeneous profile —
+        // imported from a different mod set — kept the previous profile's values (F11). Mappings
+        // absent from the profile now fall back to default 0 via priorityOf. Priority is applied for
+        // each present mapping independently of whether its saved key still parses.
+        data.priorities.clear();
         for (Binding binding : profile.bindings) {
             KeyMapping mapping = byName.get(binding.name);
-            if (mapping == null || binding.key == null) continue;
+            if (mapping == null) continue;
+            data.priorities.put(mapping.getName(), binding.priority);
+            if (binding.key == null) continue;
             InputConstants.Key key;
             try {
                 key = InputConstants.getKey(binding.key);
@@ -218,7 +225,6 @@ public final class KeybindProfileStore {
                 continue;
             }
             mapping.setKey(key);
-            data.priorities.put(mapping.getName(), binding.priority);
         }
         if (profile.combos != null) {
             KeybindComboStore.global().replaceCombos(profile.combos);
@@ -416,10 +422,12 @@ public final class KeybindProfileStore {
         for (Profile profile : data.profiles) {
             if (profile.bindings == null) profile.bindings = new ArrayList<>();
             if (profile.name == null || profile.name.isBlank()) profile.name = normalizeProfileName(null, -1);
-            for (Binding binding : profile.bindings) {
-                if (binding.name != null) data.priorities.putIfAbsent(binding.name, binding.priority);
-            }
         }
+        // Deliberately does NOT seed data.priorities from profile bindings. The old back-fill merged
+        // every profile's priorities into the single live map (first profile wins via putIfAbsent),
+        // leaking values across profiles — most visibly right after importing a heterogeneous profile
+        // (F11). data.priorities is the persisted live working set: replaced wholesale only by an
+        // explicit applySelectedProfile(), and kept in sync per-edit by changePriority().
     }
 
     private String nextProfileName() {

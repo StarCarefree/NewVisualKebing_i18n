@@ -1,6 +1,5 @@
 package com.github.newvisualkeybing.client.keyboard;
 
-import com.github.newvisualkeybing.Constants;
 import com.github.newvisualkeybing.mixin.KeyMappingAccessor;
 import com.github.newvisualkeybing.platform.Services;
 import com.github.newvisualkeybing.platform.services.IPlatformHelper.InputModifier;
@@ -9,19 +8,15 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 
 public final class KeybindPriorityEnforcer {
-
-    private static volatile Field cachedMapField;
-    private static volatile boolean lookupFailed;
 
     /**
      * Lazily-built index of {@code boundKey -> mappings bound to it}, so {@link #singleKeyMappings}
@@ -41,16 +36,24 @@ public final class KeybindPriorityEnforcer {
     }
 
 
+    /**
+     * Re-publish the key bindings after an edit or rebind. Priority is <em>not</em> pushed into any
+     * static per-key map (that would be a no-op on Forge, where {@code KeyMapping.MAP} is a
+     * {@code KeyMappingLookup}, and redundant on Fabric); instead
+     * {@link com.github.newvisualkeybing.mixin.MixinKeyMappingDispatch} enforces priority live at
+     * dispatch time. The {@link KeyMapping#resetMapping()} call is still load-bearing: the mixin's
+     * {@code resetMapping} TAIL hook invalidates {@link #invalidateKeyIndex() this enforcer's key
+     * index} and the combo cache off this very call, so the next dispatch sees the new bindings.
+     */
     public static void resetAndEnforce() {
         KeyMapping.resetMapping();
-        applyPriority();
     }
 
     /**
      * Collect every NON-chord mapping currently bound to {@code key} by scanning the live
      * key-mapping list directly. This is the basis of the full-key no-conflict dispatch: when a key
      * is pressed, <em>all</em> plain single-key bindings on it are activated together, instead of
-     * letting only the single {@code KeyMapping.MAP} winner through.
+     * letting only vanilla's single per-key winner through.
      */
     public static List<KeyMapping> singleKeyMappings(InputConstants.Key key) {
         if (key == null || key == InputConstants.UNKNOWN) return new ArrayList<>();
@@ -67,6 +70,16 @@ public final class KeybindPriorityEnforcer {
             result.add(mapping);
         }
         return result;
+    }
+
+    /**
+     * Snapshot of every key that currently has at least one binding bound to it. Used by the
+     * {@code setAll()} re-sync (see {@code MixinKeyMappingDispatch#newvisualkeybing$onSetAll}) to
+     * restore chord/priority state after vanilla re-polls each binding's {@code isDown} from its own
+     * key alone. Returns an immutable copy so callers can iterate safely across index rebuilds.
+     */
+    public static Set<InputConstants.Key> boundKeys() {
+        return Set.copyOf(keyIndex().keySet());
     }
 
     /**
@@ -89,8 +102,8 @@ public final class KeybindPriorityEnforcer {
         for (KeyMapping mapping : mc.options.keyMappings) {
             InputConstants.Key bound = ((KeyMappingAccessor) (Object) mapping).newvisualkeybing$getKey();
             if (bound == null || bound == InputConstants.UNKNOWN) continue;
-            // InputConstants.Key instances are interned singletons (vanilla itself keys
-            // KeyMapping.MAP by them), so they are sound HashMap keys.
+            // InputConstants.Key instances are interned singletons (vanilla itself keys its own
+            // per-key index by them), so they are sound HashMap keys.
             index.computeIfAbsent(bound, k -> new ArrayList<>(2)).add(mapping);
         }
         return index;
@@ -186,90 +199,5 @@ public final class KeybindPriorityEnforcer {
     /** Treat {@link InputModifier#UNKNOWN} as the plain bucket so it never strands a binding. */
     private static InputModifier normalizeModifier(InputModifier modifier) {
         return modifier == null || modifier == InputModifier.UNKNOWN ? InputModifier.NONE : modifier;
-    }
-
-    public static void applyPriority() {
-        if (lookupFailed) return;
-        Field field = cachedMapField;
-        if (field == null) {
-            field = locateMapField();
-            if (field == null) {
-                lookupFailed = true;
-                return;
-            }
-            cachedMapField = field;
-        }
-
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.options == null) return;
-
-        try {
-            @SuppressWarnings("unchecked")
-            Map<InputConstants.Key, KeyMapping> liveMap = (Map<InputConstants.Key, KeyMapping>) field.get(null);
-            if (liveMap == null) return;
-
-            KeybindComboStore combos = KeybindComboStore.global();
-            Map<InputConstants.Key, KeyMapping> winners = new HashMap<>();
-            for (KeyMapping mapping : mc.options.keyMappings) {
-                InputConstants.Key key = ((KeyMappingAccessor) (Object) mapping).newvisualkeybing$getKey();
-                if (key == null || key == InputConstants.UNKNOWN) continue;
-                KeyMapping current = winners.get(key);
-                if (current == null || beats(combos, mapping, current)) {
-                    winners.put(key, mapping);
-                }
-            }
-            for (Map.Entry<InputConstants.Key, KeyMapping> entry : winners.entrySet()) {
-                liveMap.put(entry.getKey(), entry.getValue());
-            }
-        } catch (IllegalAccessException ignored) {
-            lookupFailed = true;
-        }
-    }
-
-    /**
-     * Pick the better of two same-key candidates. Mappings whose current key is the trigger
-     * of a complete chord are demoted: a non-chord mapping always wins over a chord one,
-     * so single-key presses fall through to the non-chord mapping while the chord is still
-     * dispatched manually by {@link com.github.newvisualkeybing.mixin.MixinKeyMappingDispatch}.
-     */
-    private static boolean beats(KeybindComboStore combos, KeyMapping candidate, KeyMapping current) {
-        boolean candidateChord = combos.matchesCurrentCombo(candidate);
-        boolean currentChord = combos.matchesCurrentCombo(current);
-        if (currentChord != candidateChord) return currentChord;
-        return KeybindProfileStore.globalPriorityOf(candidate.getName())
-                > KeybindProfileStore.globalPriorityOf(current.getName());
-    }
-
-
-    private static Field locateMapField() {
-        String[] candidates = { "MAP", "f_90810_", "field_1665" };
-        for (String name : candidates) {
-            try {
-                Field f = KeyMapping.class.getDeclaredField(name);
-                f.setAccessible(true);
-                if (Modifier.isStatic(f.getModifiers()) && Map.class.isAssignableFrom(f.getType())) {
-                    return f;
-                }
-            } catch (NoSuchFieldException ignored) {
-            }
-        }
-        try {
-            for (Field f : KeyMapping.class.getDeclaredFields()) {
-                if (!Modifier.isStatic(f.getModifiers())) continue;
-                if (!Map.class.isAssignableFrom(f.getType())) continue;
-                f.setAccessible(true);
-                Object value = f.get(null);
-                if (!(value instanceof Map<?, ?> m) || m.isEmpty()) continue;
-                Object firstKey = m.keySet().iterator().next();
-                if (firstKey instanceof InputConstants.Key) {
-                    return f;
-                }
-            }
-        } catch (IllegalAccessException e) {
-            Constants.LOG.warn("Failed to locate KeyMapping MAP field via scan: {}", e.toString());
-        }
-        Constants.LOG.warn("[{}] Could not locate KeyMapping MAP field; priority will not affect runtime dispatch.",
-                Constants.MOD_NAME);
-        return null;
     }
 }

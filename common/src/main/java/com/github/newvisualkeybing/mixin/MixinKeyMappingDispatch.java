@@ -41,6 +41,15 @@ public class MixinKeyMappingDispatch {
     private static void newvisualkeybing$onResetMapping(CallbackInfo ci) {
         KeybindPriorityEnforcer.invalidateKeyIndex();
         KeybindComboStore.invalidateMappingCache();
+        // A rebind may have moved a mapping off its combo's trigger key. Drop any now-orphaned combo
+        // so an external (vanilla controls) rebind cleans up like the mod's own rebind paths do (F14).
+        // Runs after the cache invalidation above so it reads the post-rebind keys. Guarded because
+        // resetMapping is vanilla-critical and also fires during early startup: a failure (or the
+        // combo store not yet being constructable) must never break vanilla's rebind.
+        try {
+            KeybindComboStore.global().reconcileToBoundKeys();
+        } catch (Throwable ignored) {
+        }
     }
 
     @Inject(method = "click(Lcom/mojang/blaze3d/platform/InputConstants$Key;)V",
@@ -94,8 +103,23 @@ public class MixinKeyMappingDispatch {
             List<KeybindComboStore.Match> triggerMatches = store.triggerMatches(trigger);
             if (triggerMatches.isEmpty()) continue;
             boolean triggerHeld = KeybindComboStore.isKeyHeld(trigger.getName());
+            // Pressing this modifier while the trigger is already held activates the chord in
+            // "trigger-first" order. The trigger's own key event — which would have driven click()
+            // — already passed while the chord was inactive, so re-syncing isDown alone loses the
+            // press for one-shot (consumeClick) bindings. Snapshot which chords were down, re-sync,
+            // then fire click() for any that just transitioned down (rising edge only, on press).
+            boolean emitClicks = held && triggerHeld;
+            boolean[] downBefore = emitClicks ? newvisualkeybing$downStates(triggerMatches) : null;
             newvisualkeybing$syncTrigger(triggerMatches,
                     KeybindPriorityEnforcer.singleKeyMappings(trigger), triggerHeld);
+            if (emitClicks) {
+                for (int i = 0; i < triggerMatches.size(); i++) {
+                    KeyMapping mapping = triggerMatches.get(i).mapping();
+                    if (!downBefore[i] && mapping.isDown()) {
+                        newvisualkeybing$incrementClick(mapping);
+                    }
+                }
+            }
         }
 
         // When we own the key we have written every relevant mapping's state, so cancel vanilla to
@@ -103,6 +127,37 @@ public class MixinKeyMappingDispatch {
         // to vanilla (manage is false for a lone single binding) so its own action still fires.
         if (manage) {
             ci.cancel();
+        }
+    }
+
+    /**
+     * Re-sync managed keys after vanilla {@link KeyMapping#setAll()} re-polls held key state.
+     * {@code setAll()} (invoked from {@code MouseHandler.grabMouse} when a screen closes and the
+     * mouse is re-grabbed) drives each mapping's {@code isDown} purely from its own bound key: for a
+     * chord mapping that means "down" whenever the trigger is held, ignoring the modifier (firstKey);
+     * for a key with several plain bindings it means all of them go down, ignoring priority
+     * suppression. Either way a stale "pressed" state survives the screen close until the next key
+     * event re-syncs — the F1 symptom. Re-run the mod's per-key sync for every managed key (a chord
+     * trigger, or a key with more than one binding) so the dispatch model is restored at once;
+     * single-binding keys keep vanilla's correct poll. Scoped to {@code KEYSYM} keys to mirror
+     * exactly what {@code setAll()} itself re-polls. {@code setAll()} runs only on
+     * screen-close / focus-regain, so iterating the bound keys here is not a hot path.
+     */
+    @Inject(method = "setAll()V", at = @At("TAIL"))
+    private static void newvisualkeybing$onSetAll(CallbackInfo ci) {
+        KeybindComboStore store = KeybindComboStore.global();
+        boolean hasCombos = store.hasCombos();
+        for (InputConstants.Key key : KeybindPriorityEnforcer.boundKeys()) {
+            // setAll() only re-polls keyboard (KEYSYM) mappings; match that scope so we correct
+            // exactly what it touched and never reinterpret a mouse-button binding here.
+            if (key.getType() != InputConstants.Type.KEYSYM) continue;
+            List<KeybindComboStore.Match> matches = hasCombos
+                    ? store.triggerMatches(key) : java.util.Collections.emptyList();
+            List<KeyMapping> singles = KeybindPriorityEnforcer.singleKeyMappings(key);
+            // Unmanaged keys (no chord, <=1 binding) already hold vanilla's correct per-key poll.
+            if (matches.isEmpty() && singles.size() <= 1) continue;
+            boolean held = KeybindComboStore.isKeyHeld(key.getName());
+            newvisualkeybing$syncTrigger(matches, singles, held);
         }
     }
 
@@ -131,6 +186,15 @@ public class MixinKeyMappingDispatch {
             Set<KeyMapping> winners = new HashSet<>(KeybindPriorityEnforcer.resolveByPriority(singles));
             for (KeyMapping single : singles) single.setDown(winners.contains(single));
         }
+    }
+
+    /** Snapshot each chord mapping's {@code isDown} before a re-sync, for rising-edge click detection. */
+    private static boolean[] newvisualkeybing$downStates(List<KeybindComboStore.Match> matches) {
+        boolean[] states = new boolean[matches.size()];
+        for (int i = 0; i < matches.size(); i++) {
+            states[i] = matches.get(i).mapping().isDown();
+        }
+        return states;
     }
 
     /** Mappings of every chord on this trigger whose modifier is currently held. */

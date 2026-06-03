@@ -277,10 +277,6 @@ public final class KeybindComboStore {
         return result;
     }
 
-    public boolean isParticipant(int virtualKey) {
-        return participantVirtualKeys().contains(virtualKey);
-    }
-
     public synchronized List<ComboBinding> combosForVirtualKey(int virtualKey) {
         List<ComboBinding> result = new ArrayList<>();
         for (ComboBinding combo : data.combos) {
@@ -368,44 +364,22 @@ public final class KeybindComboStore {
         return ((KeyMappingAccessor) (Object) mapping).newvisualkeybing$getKey();
     }
 
-    public synchronized boolean hasCompleteCombo(String mappingName) {
-        ComboBinding combo = findByMapping(mappingName);
-        return isComplete(combo);
-    }
-
     public synchronized boolean hasCurrentCombo(String mappingName) {
         KeyMapping mapping = findMapping(mappingName);
         return mapping != null && matchesCurrentCombo(mapping);
-    }
-
-    public synchronized boolean sameCombo(String mappingA, String mappingB) {
-        if (Objects.equals(mappingA, mappingB)) return true;
-        ComboBinding a = findByMapping(mappingA);
-        ComboBinding b = findByMapping(mappingB);
-        if (!isComplete(a) || !isComplete(b)) return false;
-        return Objects.equals(a.firstKey, b.firstKey) && Objects.equals(a.secondKey, b.secondKey);
-    }
-
-    public synchronized boolean combosConflict(String mappingA, String mappingB) {
-        ComboBinding a = findByMapping(mappingA);
-        ComboBinding b = findByMapping(mappingB);
-        if (!isComplete(a) || !isComplete(b)) return true;
-        return sameInput(a.secondKey, b.secondKey) && sameInput(a.firstKey, b.firstKey);
     }
 
     public synchronized boolean matchesCurrentCombo(KeyMapping mapping) {
         if (mapping == null) return false;
         ComboBinding combo = findByMapping(mapping.getName());
         if (!isComplete(combo)) return false;
-        return Objects.equals(combo.secondKey, currentKey(mapping).getName());
-    }
-
-    public synchronized boolean isComboTarget(KeyMapping mapping, InputConstants.Key triggerKey) {
-        if (mapping == null || triggerKey == null || triggerKey == InputConstants.UNKNOWN) return false;
-        ComboBinding combo = findByMapping(mapping.getName());
-        if (!isComplete(combo)) return false;
-        return sameInput(combo.secondKey, triggerKey.getName())
-                && sameInput(currentKey(mapping).getName(), triggerKey.getName());
+        // Key equivalence must match triggerMatches(), which compares with sameInput: otherwise a
+        // secondKey and the mapping's live key that denote the SAME key via different
+        // strings (hand-edited JSON, an alias, canonical-name drift) would make triggerMatches treat
+        // the mapping as a chord trigger while singleKeyMappings (which excludes via this method)
+        // still treats it as a plain single — landing it in both lists and firing it as a bare key
+        // when the modifier is not held (F13). sameInput parses both names and compares by key.
+        return sameInput(combo.secondKey, currentKey(mapping).getName());
     }
 
     public synchronized String activatorSignature(String mappingName, InputModifier modifier) {
@@ -426,23 +400,6 @@ public final class KeybindComboStore {
         return modifierSignature(modifier);
     }
 
-    public synchronized Match findMatchingCombo(InputConstants.Key triggerKey) {
-        if (triggerKey == null || triggerKey == InputConstants.UNKNOWN) return null;
-        String triggerName = triggerKey.getName();
-        Match fallback = null;
-        for (ComboBinding combo : data.combos) {
-            if (!isComplete(combo)) continue;
-            if (!Objects.equals(combo.secondKey, triggerName)) continue;
-            KeyMapping mapping = findMapping(combo.mappingName);
-            if (mapping == null) continue;
-            if (!Objects.equals(currentKey(mapping).getName(), triggerName)) continue;
-            Match match = new Match(combo, mapping, isKeyHeld(combo.firstKey));
-            if (match.active()) return match;
-            if (fallback == null) fallback = match;
-        }
-        return fallback;
-    }
-
     public synchronized List<Match> triggerMatches(InputConstants.Key triggerKey) {
         if (triggerKey == null || triggerKey == InputConstants.UNKNOWN) return Collections.emptyList();
         String triggerName = triggerKey.getName();
@@ -458,14 +415,29 @@ public final class KeybindComboStore {
         return result;
     }
 
-    public synchronized void syncComboStates() {
-        for (ComboBinding combo : data.combos) {
-            if (!isComplete(combo)) continue;
+    /**
+     * Drop combos whose mapping has been rebound away from the combo's trigger key. A combo's
+     * {@code secondKey} is, by construction, the mapping's bound key — every in-mod rebind path
+     * re-creates or removes the combo to keep that true (see {@code KeybindEditScreen}). An
+     * <em>external</em> rebind through the vanilla controls screen changes only the key, orphaning
+     * the combo and leaving a dormant residual (F14). Invoked from the {@code resetMapping} hook —
+     * the single funnel every rebind passes through — this removes the orphan, matching what the
+     * mod's own rebind does. Mappings not currently loaded are left untouched (the owning mod may be
+     * re-added later); those combos still show as dormant until then. Returns {@code true} if any
+     * combo was removed.
+     */
+    public synchronized boolean reconcileToBoundKeys() {
+        boolean removed = data.combos.removeIf(combo -> {
+            if (!isComplete(combo)) return false;
             KeyMapping mapping = findMapping(combo.mappingName);
-            if (mapping == null) continue;
-            if (!sameInput(combo.secondKey, currentKey(mapping).getName())) continue;
-            mapping.setDown(isKeyHeld(combo.firstKey) && isKeyHeld(combo.secondKey));
+            if (mapping == null) return false;
+            return !sameInput(combo.secondKey, currentKey(mapping).getName());
+        });
+        if (removed) {
+            save();
+            bumpVersion();
         }
+        return removed;
     }
 
     private static boolean isComplete(ComboBinding combo) {
@@ -519,22 +491,6 @@ public final class KeybindComboStore {
 
     private static boolean sameKey(InputConstants.Key a, InputConstants.Key b) {
         return a != null && b != null && a.getType() == b.getType() && a.getValue() == b.getValue();
-    }
-
-    /**
-     * Whether the modifier key of a combo bound to the same trigger as {@code triggerKey}
-     * is required. Returns the combo whose modifier needs to be held, or {@code null} when
-     * no combo with that trigger exists. Used by the dispatch mixin to decide whether to
-     * suppress a vanilla single-key click.
-     */
-    public synchronized ComboBinding triggerCombo(InputConstants.Key triggerKey, KeyMapping mapping) {
-        if (triggerKey == null || mapping == null) return null;
-        String triggerName = triggerKey.getName();
-        for (ComboBinding combo : data.combos) {
-            if (!Objects.equals(combo.mappingName, mapping.getName())) continue;
-            if (Objects.equals(combo.secondKey, triggerName)) return combo;
-        }
-        return null;
     }
 
     public static boolean isKeyHeld(String inputName) {
