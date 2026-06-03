@@ -85,6 +85,24 @@ public final class KeybindViewerConfig {
         return data.comboKeysNonConflicting;
     }
 
+    public boolean mousePanelCollapsed() {
+        return data.mousePanelCollapsed;
+    }
+
+    public void setMousePanelCollapsed(boolean collapsed) {
+        data.mousePanelCollapsed = collapsed;
+        save();
+    }
+
+    public boolean detailPanelCollapsed() {
+        return data.detailPanelCollapsed;
+    }
+
+    public void setDetailPanelCollapsed(boolean collapsed) {
+        data.detailPanelCollapsed = collapsed;
+        save();
+    }
+
     public KeyboardLayoutData.Style defaultLayoutStyle() {
         if (data.defaultLayout == null || data.defaultLayout.isBlank()) {
             return KeyboardLayoutData.Style.ANSI_104;
@@ -105,5 +123,7 @@ public final class KeybindViewerConfig {
         boolean hideNonSelectedMod;
         Boolean comboKeysNonConflicting = Boolean.TRUE;
         String defaultLayout;
+        boolean mousePanelCollapsed;
+        boolean detailPanelCollapsed;
     }
 }

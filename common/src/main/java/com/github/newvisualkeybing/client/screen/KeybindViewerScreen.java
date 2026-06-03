@@ -45,6 +45,9 @@ public class KeybindViewerScreen extends FixedScaleScreen {
     private static final int PANEL_CONTENT_TOP = 28;
     private static final int ACTION_BTN_H = 22;
     private static final int ACTION_BTN_GAP = 8;
+    // Collapsed right-rail panels shrink to a header-only strip with a toggle chevron.
+    private static final int COLLAPSED_PANEL_H = 24;
+    private static final int PANEL_TOGGLE_SIZE = 14;
 
     private final Screen parent;
     private final KeyBindingScanner scanner = new KeyBindingScanner();
@@ -105,6 +108,10 @@ public class KeybindViewerScreen extends FixedScaleScreen {
     private int detailPanelH;
     private int detailPanelW = DETAIL_PANEL_W;
     private int mousePanelW = MOUSE_PANEL_W;
+    private boolean mousePanelCollapsed;
+    private boolean detailPanelCollapsed;
+    private int mouseToggleX = -1, mouseToggleY = -1;
+    private int detailToggleX = -1, detailToggleY = -1;
     private boolean rightRailStacked;
     private int contentTop;
     private int contentBottom;
@@ -154,6 +161,8 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         UITheme.setMode(UITheme.Mode.DARK);
         scanner.scan();
         refreshTextCache();
+        mousePanelCollapsed = viewerConfig.mousePanelCollapsed();
+        detailPanelCollapsed = viewerConfig.detailPanelCollapsed();
 
         boolean compact = width < COMPACT_WIDTH_THRESHOLD;
         if (compact) {
@@ -684,17 +693,73 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
     }
 
     private void renderMousePanel(GuiGraphics g, int mouseX, int mouseY, long nowMs) {
+        if (mousePanelCollapsed) {
+            renderCollapsedPanel(g, mousePanelX, mousePanelY, mousePanelW,
+                    Component.translatable("screen.newvisualkeybing.viewer.mouse").getString(),
+                    mouseX, mouseY, true);
+            return;
+        }
         Integer hover = mouseRenderer.render(g, font, mousePanelX, mousePanelY, mousePanelW, mousePanelH,
                 selectedVirtualKey, this::isVisibleKey, this::isHiddenBySelectedMod,
                 this::isSearchMatch,
                 mouseX, mouseY, animTick, nowMs);
         if (hover != null) hoveredVirtualKey = hover;
+        drawPanelToggle(g, mousePanelX, mousePanelY, mousePanelW, PANEL_CONTENT_TOP, mouseX, mouseY, true, false);
     }
 
 
     private void renderDetailPanel(GuiGraphics g, Integer virtualKey, int mouseX, int mouseY) {
+        if (detailPanelCollapsed) {
+            renderCollapsedPanel(g, detailPanelX, detailPanelY, detailPanelW,
+                    Component.translatable("screen.newvisualkeybing.viewer.details").getString(),
+                    mouseX, mouseY, false);
+            return;
+        }
         detailPanel.render(g, font, detailPanelX, detailPanelY, detailPanelW, detailPanelH,
                 virtualKey, mouseX, mouseY);
+        drawPanelToggle(g, detailPanelX, detailPanelY, detailPanelW, PANEL_CONTENT_TOP, mouseX, mouseY, false, false);
+    }
+
+    /** Draws a header-only strip standing in for a collapsed right-rail panel. */
+    private void renderCollapsedPanel(GuiGraphics g, int x, int y, int w, String title,
+                                      int mouseX, int mouseY, boolean isMouse) {
+        var c = UITheme.colors();
+        UITheme.drawGlassPanel(g, x, y, w, COLLAPSED_PANEL_H, PANEL_RADIUS);
+        g.drawString(font, fitToWidth(font, title, w - PANEL_PAD * 2 - PANEL_TOGGLE_SIZE - 4),
+                x + PANEL_PAD, y + (COLLAPSED_PANEL_H - font.lineHeight) / 2, c.textPrimary(), false);
+        drawPanelToggle(g, x, y, w, COLLAPSED_PANEL_H, mouseX, mouseY, isMouse, true);
+    }
+
+    /**
+     * Top-right chevron toggle for a right-rail panel. The chevron points up when expanded
+     * (click to fold away) and down when collapsed (click to unfold). The hit rect is cached so
+     * {@link #mouseClicked} can route the click without re-deriving the geometry.
+     */
+    private void drawPanelToggle(GuiGraphics g, int x, int y, int w, int headerH,
+                                 int mouseX, int mouseY, boolean isMouse, boolean collapsed) {
+        var c = UITheme.colors();
+        int size = PANEL_TOGGLE_SIZE;
+        int tx = x + w - PANEL_PAD - size;
+        int ty = y + (headerH - size) / 2;
+        if (isMouse) { mouseToggleX = tx; mouseToggleY = ty; }
+        else { detailToggleX = tx; detailToggleY = ty; }
+        boolean hover = inside(mouseX, mouseY, tx, ty, size, size);
+        int fill = hover ? UITheme.lerpColor(c.widgetBg(), c.accent(), 0.45f)
+                : UITheme.withAlpha(c.widgetBg(), 0xB0);
+        UITheme.fillRoundedRectFast(g, tx, ty, size, size, 3, fill);
+        UITheme.drawRoundedBorderFast(g, tx, ty, size, size, 3,
+                UITheme.withAlpha(c.widgetBorder(), hover ? 0xC0 : 0x80));
+        drawChevron(g, tx + size / 2, ty + size / 2, collapsed, hover ? 0xFFFFFFFF : c.textSecondary());
+    }
+
+    /** Draws a small chevron centred at (cx, cy): pointing down when {@code down}, else up. */
+    private static void drawChevron(GuiGraphics g, int cx, int cy, boolean down, int color) {
+        int oy = down ? -1 : 1;
+        for (int i = 0; i <= 3; i++) {
+            int dy = down ? i : -i;
+            g.fill(cx - 3 + i, cy + dy + oy, cx - 3 + i + 1, cy + dy + oy + 1, color);
+            g.fill(cx + 3 - i, cy + dy + oy, cx + 3 - i + 1, cy + dy + oy + 1, color);
+        }
     }
 
     static String fitToWidth(net.minecraft.client.gui.Font font, String text, int maxW) {
@@ -857,24 +922,40 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             mousePanelW = railW;
             mousePanelX = width - BODY_PAD - railW;
             mousePanelY = contentTop;
-            // Give the mouse diagram up to ~40% of the column (capped), but never let it push the
-            // info-dense detail panel below a usable minimum or off the bottom. The old fixed-128
-            // minimum could overflow the detail panel past the status bar on small canvases.
-            int mouseDesired = Math.min(MOUSE_PANEL_STACK_H, Math.max(110, bodyH * 2 / 5));
-            int mouseMax = Math.max(60, bodyH - COL_GAP - 80);
-            mousePanelH = Math.min(mouseDesired, mouseMax);
             detailPanelX = mousePanelX;
-            detailPanelY = mousePanelY + mousePanelH + COL_GAP;
-            detailPanelH = Math.max(60, contentBottom - detailPanelY);
+            // A collapsed panel keeps only its header strip; the freed vertical space flows to its
+            // expanded sibling so the remaining panel can show more (e.g. a longer binding list).
+            if (mousePanelCollapsed && detailPanelCollapsed) {
+                mousePanelH = COLLAPSED_PANEL_H;
+                detailPanelY = mousePanelY + COLLAPSED_PANEL_H + COL_GAP;
+                detailPanelH = COLLAPSED_PANEL_H;
+            } else if (mousePanelCollapsed) {
+                mousePanelH = COLLAPSED_PANEL_H;
+                detailPanelY = mousePanelY + COLLAPSED_PANEL_H + COL_GAP;
+                detailPanelH = Math.max(60, contentBottom - detailPanelY);
+            } else if (detailPanelCollapsed) {
+                mousePanelH = Math.max(80, bodyH - COLLAPSED_PANEL_H - COL_GAP);
+                detailPanelY = mousePanelY + mousePanelH + COL_GAP;
+                detailPanelH = COLLAPSED_PANEL_H;
+            } else {
+                // Give the mouse diagram up to ~40% of the column (capped), but never let it push the
+                // info-dense detail panel below a usable minimum or off the bottom. The old fixed-128
+                // minimum could overflow the detail panel past the status bar on small canvases.
+                int mouseDesired = Math.min(MOUSE_PANEL_STACK_H, Math.max(110, bodyH * 2 / 5));
+                int mouseMax = Math.max(60, bodyH - COL_GAP - 80);
+                mousePanelH = Math.min(mouseDesired, mouseMax);
+                detailPanelY = mousePanelY + mousePanelH + COL_GAP;
+                detailPanelH = Math.max(60, contentBottom - detailPanelY);
+            }
         } else {
             detailPanelW = detailW;
             mousePanelW = mouseW;
             detailPanelX = width - BODY_PAD - detailPanelW;
             detailPanelY = contentTop;
-            detailPanelH = bodyH;
+            detailPanelH = detailPanelCollapsed ? COLLAPSED_PANEL_H : bodyH;
             mousePanelX = detailPanelX - COL_GAP - mousePanelW;
             mousePanelY = contentTop;
-            mousePanelH = bodyH;
+            mousePanelH = mousePanelCollapsed ? COLLAPSED_PANEL_H : bodyH;
         }
 
         int leftRailW = profilePanelOpen ? KeybindProfilePanel.WIDTH : MOD_PANEL_W;
@@ -1111,6 +1192,19 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
         if (button != 0) return false;
 
+        if (inside(mouseX, mouseY, mouseToggleX, mouseToggleY, PANEL_TOGGLE_SIZE, PANEL_TOGGLE_SIZE)) {
+            mousePanelCollapsed = !mousePanelCollapsed;
+            viewerConfig.setMousePanelCollapsed(mousePanelCollapsed);
+            invalidateLayoutCache();
+            return true;
+        }
+        if (inside(mouseX, mouseY, detailToggleX, detailToggleY, PANEL_TOGGLE_SIZE, PANEL_TOGGLE_SIZE)) {
+            detailPanelCollapsed = !detailPanelCollapsed;
+            viewerConfig.setDetailPanelCollapsed(detailPanelCollapsed);
+            invalidateLayoutCache();
+            return true;
+        }
+
         FilterTab[] tabs = FilterTab.values();
         int x = toolbarTabsX;
         int y = HEADER_H + 4;
@@ -1136,7 +1230,8 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         }
 
         boolean wheelSelected = selectedVirtualKey != null && KeyboardLayoutData.isWheel(selectedVirtualKey);
-        if (selectedVirtualKey != null && !wheelSelected) {
+        boolean detailActive = !detailPanelCollapsed && selectedVirtualKey != null && !wheelSelected;
+        if (detailActive) {
             KeybindDetailPanel.PriorityHit priorityHit = detailPanel.getRowPriorityHit(mouseX, mouseY);
             if (priorityHit != null) {
                 changeMappingPriority(priorityHit.info(), priorityHit.delta());
@@ -1153,11 +1248,11 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
                 return true;
             }
         }
-        if (selectedVirtualKey != null && !wheelSelected && detailPanel.isModifyHit(mouseX, mouseY)) {
+        if (detailActive && detailPanel.isModifyHit(mouseX, mouseY)) {
             quickEdit.open(selectedVirtualKey);
             return true;
         }
-        if (selectedVirtualKey != null && !wheelSelected && detailPanel.isUnbindHit(mouseX, mouseY)) {
+        if (detailActive && detailPanel.isUnbindHit(mouseX, mouseY)) {
             int virtualKey = selectedVirtualKey;
             int countBefore = (KeyboardLayoutData.isMouse(virtualKey)
                     ? scanner.getMouseBindings(KeyboardLayoutData.virtualToMouseBtn(virtualKey))
@@ -1184,12 +1279,14 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             }
         }
 
-        Integer mouseHit = mouseRenderer.hitTest(mouseX, mouseY);
-        if (mouseHit != null) {
-            if (isHiddenBySelectedMod(mouseHit)) return false;
-            selectedVirtualKey = mouseHit;
-            detailPanel.resetScroll();
-            return true;
+        if (!mousePanelCollapsed) {
+            Integer mouseHit = mouseRenderer.hitTest(mouseX, mouseY);
+            if (mouseHit != null) {
+                if (isHiddenBySelectedMod(mouseHit)) return false;
+                selectedVirtualKey = mouseHit;
+                detailPanel.resetScroll();
+                return true;
+            }
         }
 
         selectedVirtualKey = null;
@@ -1288,13 +1385,14 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         mouseX = fixedMouseX(mouseX);
         mouseY = fixedMouseY(mouseY);
         if (quickEdit.isOpen()) return quickEdit.mouseScrolled(mouseX, mouseY, scrollY);
-        if (selectedVirtualKey != null
+        if (!detailPanelCollapsed && selectedVirtualKey != null
                 && mouseX >= detailPanelX && mouseX <= detailPanelX + detailPanelW
                 && mouseY >= detailPanelY && mouseY <= detailPanelY + detailPanelH) {
             detailPanel.scroll((int) Math.signum(scrollY));
             return true;
         }
-        if (mouseX >= mousePanelX && mouseX <= mousePanelX + mousePanelW
+        if (!mousePanelCollapsed
+                && mouseX >= mousePanelX && mouseX <= mousePanelX + mousePanelW
                 && mouseY >= mousePanelY && mouseY <= mousePanelY + mousePanelH) {
             selectedVirtualKey = scrollY > 0 ? KeyboardLayoutData.WHEEL_UP_VIRTUAL : KeyboardLayoutData.WHEEL_DOWN_VIRTUAL;
             return true;

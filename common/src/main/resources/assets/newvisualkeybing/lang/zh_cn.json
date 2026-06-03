@@ -149,6 +149,8 @@
   "screen.newvisualkeybing.board.annotate.pick_mod": "请选择模组",
   "screen.newvisualkeybing.board.annotate.list": "列表筛选",
   "screen.newvisualkeybing.board.legend.assigned": "已绑定",
+  "screen.newvisualkeybing.board.legend.combo": "组合键",
+  "screen.newvisualkeybing.board.legend.conflict": "冲突",
   "screen.newvisualkeybing.board.legend.unused": "未使用",
   "screen.newvisualkeybing.board.legend.hidden": "隐藏绑定",
   "screen.newvisualkeybing.board.filter": "筛选: %s",

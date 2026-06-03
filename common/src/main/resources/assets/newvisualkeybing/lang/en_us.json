@@ -149,6 +149,8 @@
   "screen.newvisualkeybing.board.annotate.pick_mod": "Pick a mod",
   "screen.newvisualkeybing.board.annotate.list": "List filter",
   "screen.newvisualkeybing.board.legend.assigned": "Assigned",
+  "screen.newvisualkeybing.board.legend.combo": "Combo",
+  "screen.newvisualkeybing.board.legend.conflict": "Conflict",
   "screen.newvisualkeybing.board.legend.unused": "Unused",
   "screen.newvisualkeybing.board.legend.hidden": "Hidden binding",
   "screen.newvisualkeybing.board.filter": "Filter: %s",

@@ -880,7 +880,8 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
                         scope, total, conflicts, hidden).getString()
                 : Component.translatable("screen.newvisualkeybing.board.summary",
                         scope, total, conflicts).getString();
-        int maxTextW = Math.max(80, w - 154);
+        // Reserve room on the right for the (now four-item) colour legend drawn over this same strip.
+        int maxTextW = Math.max(80, w - 260);
         g.drawString(font, KeybindViewerScreen.fitToWidth(font, summary, maxTextW),
                 x + 7, y + (SUMMARY_H - font.lineHeight) / 2, c.textSecondary(), false);
     }
@@ -1067,12 +1068,26 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
     private void renderLegend(GuiGraphics g) {
         var c = UITheme.colors();
         int y = boardTop + 5;
-        String unused = Component.translatable("screen.newvisualkeybing.board.legend.unused").getString();
-        int w = 34 + font.width(Component.translatable("screen.newvisualkeybing.board.legend.assigned").getString())
-                + font.width(unused);
+        // Mirror the key status palette the keyboard actually paints (see statusColor / keyStatusColor):
+        // bound keys are green, combos yellow, conflicts red, free keys neutral. The legend used to
+        // show "assigned" as the blue accent, which never matched the green keys on screen.
+        int[] swatches = { c.success(), c.warning(), c.danger(), c.widgetBorder() };
+        String[] keys = {
+                "screen.newvisualkeybing.board.legend.assigned",
+                "screen.newvisualkeybing.board.legend.combo",
+                "screen.newvisualkeybing.board.legend.conflict",
+                "screen.newvisualkeybing.board.legend.unused",
+        };
+        int w = 0;
+        for (int i = 0; i < keys.length; i++) {
+            w += 12 + font.width(Component.translatable(keys[i]).getString());
+            if (i > 0) w += 10;
+        }
         int x = Math.max(boardX + 2, boardX + boardW - w - 12);
-        x = legendItem(g, x, y, c.accent(), "screen.newvisualkeybing.board.legend.assigned");
-        legendItem(g, x + 10, y, c.widgetBorder(), "screen.newvisualkeybing.board.legend.unused");
+        for (int i = 0; i < keys.length; i++) {
+            if (i > 0) x += 10;
+            x = legendItem(g, x, y, swatches[i], keys[i]);
+        }
     }
 
     private int legendItem(GuiGraphics g, int x, int y, int swatch, String key) {
