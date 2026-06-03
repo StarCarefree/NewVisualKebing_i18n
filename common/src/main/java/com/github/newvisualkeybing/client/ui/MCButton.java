@@ -79,9 +79,11 @@ public class MCButton extends AbstractWidget {
         int textX = x + (w - textWidth) / 2;
         int textY = y + (h - mc.font.lineHeight) / 2 + 1;
 
-        if (UITheme.vanilla()) {
-            renderVanillaButton(graphics, x, y, w, h);
-            // Vanilla button text: white when active, gray when disabled, with the standard shadow.
+        if (UITheme.flat()) {
+            if (!(UITheme.custom() && drawCustomButton(graphics, x, y, w, h))) {
+                renderVanillaButton(graphics, x, y, w, h);
+            }
+            // Vanilla/custom button text: white when active, gray when disabled, with the standard shadow.
             int vColor = this.active ? 0xFFFFFFFF : 0xFFA0A0A0;
             graphics.drawString(mc.font, getMessage(), textX, textY, vColor, true);
             return;
@@ -102,6 +104,19 @@ public class MCButton extends AbstractWidget {
         boolean hovered = isHoveredOrFocused() && this.active;
         int v = !this.active ? 46 : hovered ? 86 : 66;
         graphics.blitNineSliced(VANILLA_WIDGETS, x, y, w, h, 20, 4, 200, 20, 0, v);
+    }
+
+    /** Custom skin: draw the user's button texture for the current state, or false to fall back. */
+    private boolean drawCustomButton(GuiGraphics graphics, int x, int y, int w, int h) {
+        UITextureStore store = UITextureStore.global();
+        boolean hovered = isHoveredOrFocused() && this.active;
+        UITextureSlot slot = UITextureSlot.BUTTON;
+        if (!this.active && store.has(UITextureSlot.BUTTON_DISABLED)) {
+            slot = UITextureSlot.BUTTON_DISABLED;
+        } else if (hovered && store.has(UITextureSlot.BUTTON_HOVER)) {
+            slot = UITextureSlot.BUTTON_HOVER;
+        }
+        return store.draw(slot, graphics, x, y, w, h);
     }
 
     private void renderSurface(GuiGraphics graphics, int x, int y, int w, int h, int radius,

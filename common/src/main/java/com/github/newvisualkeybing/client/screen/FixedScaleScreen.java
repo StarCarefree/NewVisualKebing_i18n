@@ -2,6 +2,7 @@ package com.github.newvisualkeybing.client.screen;
 
 import com.github.newvisualkeybing.client.keyboard.KeybindViewerConfig;
 import com.github.newvisualkeybing.client.ui.UITheme;
+import com.github.newvisualkeybing.client.ui.UITextureStore;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -25,6 +26,8 @@ abstract class FixedScaleScreen extends Screen {
         // Load the persisted skin before any widget builds its colour cache, so every screen in the
         // mod (viewer, board, edit, …) honours the choice the user made on the main screen.
         UITheme.setSkin(KeybindViewerConfig.global().uiSkin());
+        // When the custom skin is active, make sure the active pack's textures are loaded (render thread).
+        if (UITheme.custom()) UITextureStore.global().ensureLoaded(KeybindViewerConfig.global().uiTexturePack());
     }
 
     protected final void applyFixedScaleMetrics() {

@@ -9,6 +9,8 @@ import com.github.newvisualkeybing.client.keyboard.KeyboardLayoutData;
 import com.github.newvisualkeybing.client.ui.MCButton;
 import com.github.newvisualkeybing.client.ui.MCEditBox;
 import com.github.newvisualkeybing.client.ui.UITheme;
+import com.github.newvisualkeybing.client.ui.UITextureSlot;
+import com.github.newvisualkeybing.client.ui.UITextureStore;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -189,7 +191,11 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         int xBoard = xManage - btnGap - btnBoardW;
         int xCombo = xBoard - btnGap - btnComboW;
         int xLayout = xCombo - btnGap - btnLayoutW;
-        int btnSkinW = fitButtonWidth(skinLabel(), compact ? 40 : 54, compact ? 62 : 82);
+        int skinLabelW = Math.max(
+                font.width(Component.translatable("screen.newvisualkeybing.viewer.skin.modern").getString()),
+                Math.max(font.width(Component.translatable("screen.newvisualkeybing.viewer.skin.vanilla").getString()),
+                        font.width(Component.translatable("screen.newvisualkeybing.viewer.skin.custom").getString())));
+        int btnSkinW = Mth.clamp(skinLabelW + 18, compact ? 44 : 56, compact ? 72 : 94);
         int xSkin = xLayout - btnGap - btnSkinW;
 
         computeToolbarGeometry(compact, xSkin);
@@ -231,12 +237,33 @@ public class KeybindViewerScreen extends FixedScaleScreen {
 
         skinButton = MCButton.create(xSkin, btnY, btnSkinW, btnH,
                 skinLabel(), button -> {
-            UITheme.Skin next = UITheme.getSkin() == UITheme.Skin.VANILLA
-                    ? UITheme.Skin.MODERN : UITheme.Skin.VANILLA;
+            UITextureStore store = UITextureStore.global();
+            if (Screen.hasShiftDown()) {
+                // Shift+click: enter Custom and cycle to the next discovered texture pack (folder/zip).
+                UITheme.setSkin(UITheme.Skin.CUSTOM);
+                viewerConfig.setUiSkin(UITheme.Skin.CUSTOM);
+                button.setMessage(skinLabel());
+                store.ensureLoaded(viewerConfig.uiTexturePack());
+                String nextPack = store.nextPackId();
+                if (nextPack != null) viewerConfig.setUiTexturePack(nextPack);
+                store.reload(nextPack != null ? nextPack : viewerConfig.uiTexturePack());
+                showSkinPackNotice(store);
+                return;
+            }
+            UITheme.Skin next = switch (UITheme.getSkin()) {
+                case MODERN -> UITheme.Skin.VANILLA;
+                case VANILLA -> UITheme.Skin.CUSTOM;
+                case CUSTOM -> UITheme.Skin.MODERN;
+            };
             UITheme.setSkin(next);
             viewerConfig.setUiSkin(next);
             button.setMessage(skinLabel());
-            showNotice(skinLabel().getString());
+            if (next == UITheme.Skin.CUSTOM) {
+                store.reload(viewerConfig.uiTexturePack());
+                showSkinPackNotice(store);
+            } else {
+                showNotice(skinLabel().getString());
+            }
         });
         addRenderableWidget(skinButton);
 
@@ -362,7 +389,9 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         pushFixedScale(g);
         try {
         var c = UITheme.colors();
-        g.fill(0, 0, width, height, c.panelBg() | 0xFF000000);
+        if (!(UITheme.custom() && UITextureStore.global().draw(UITextureSlot.BACKGROUND, g, 0, 0, width, height))) {
+            g.fill(0, 0, width, height, c.panelBg() | 0xFF000000);
+        }
 
         renderHeaderBar(g);
         renderToolbar(g, fixedMouseX, fixedMouseY);
@@ -696,9 +725,22 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
 
 
     private Component skinLabel() {
-        return Component.translatable(UITheme.getSkin() == UITheme.Skin.VANILLA
-                ? "screen.newvisualkeybing.viewer.skin.vanilla"
-                : "screen.newvisualkeybing.viewer.skin.modern");
+        return Component.translatable(switch (UITheme.getSkin()) {
+            case VANILLA -> "screen.newvisualkeybing.viewer.skin.vanilla";
+            case CUSTOM -> "screen.newvisualkeybing.viewer.skin.custom";
+            default -> "screen.newvisualkeybing.viewer.skin.modern";
+        });
+    }
+
+    /** Notice after entering/cycling the custom skin: active pack + texture count, or the empty hint. */
+    private void showSkinPackNotice(UITextureStore store) {
+        if (store.loadedCount() == 0) {
+            showNotice(Component.translatable("screen.newvisualkeybing.viewer.skin.custom_empty",
+                    store.directory().toString()).getString());
+        } else {
+            showNotice(Component.translatable("screen.newvisualkeybing.viewer.skin.pack",
+                    store.activePackName(), store.loadedCount()).getString());
+        }
     }
 
     private Component layoutLabel(KeyboardLayoutData.Style style) {

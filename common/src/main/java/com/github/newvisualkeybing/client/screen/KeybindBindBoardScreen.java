@@ -10,6 +10,8 @@ import com.github.newvisualkeybing.client.keyboard.Pinyin;
 import com.github.newvisualkeybing.client.ui.MCButton;
 import com.github.newvisualkeybing.client.ui.MCEditBox;
 import com.github.newvisualkeybing.client.ui.UITheme;
+import com.github.newvisualkeybing.client.ui.UITextureSlot;
+import com.github.newvisualkeybing.client.ui.UITextureStore;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -290,7 +292,9 @@ public class KeybindBindBoardScreen extends FixedScaleScreen {
         pushFixedScale(graphics);
         try {
             var c = UITheme.colors();
-            graphics.fill(0, 0, width, height, c.panelBg() | 0xFF000000);
+            if (!(UITheme.custom() && UITextureStore.global().draw(UITextureSlot.BACKGROUND, graphics, 0, 0, width, height))) {
+                graphics.fill(0, 0, width, height, c.panelBg() | 0xFF000000);
+            }
             renderHeader(graphics);
             renderPalette(graphics, mx, my);
 

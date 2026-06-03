@@ -15,7 +15,7 @@ public final class UITheme {
      * {@code VANILLA} repaints the same widgets in a flat, blocky Minecraft-classic style (sharp
      * corners + two-tone bevels) via branches in the low-level draw helpers, so no call site changes.
      */
-    public enum Skin { MODERN, VANILLA }
+    public enum Skin { MODERN, VANILLA, CUSTOM }
 
     private static Mode currentMode = Mode.DARK;
     private static Skin currentSkin = Skin.MODERN;
@@ -93,17 +93,20 @@ public final class UITheme {
     }
     public static Skin getSkin() { return currentSkin; }
     public static boolean vanilla() { return currentSkin == Skin.VANILLA; }
+    public static boolean custom() { return currentSkin == Skin.CUSTOM; }
+    /** True for any non-modern skin (vanilla or custom), which share the flat/blocky procedural base. */
+    public static boolean flat() { return currentSkin != Skin.MODERN; }
     /** Monotonic counter; widgets compare it to drop colour caches when the mode/skin changes. */
     public static int themeVersion() { return themeVersion; }
 
     public static ColorPalette colors() {
-        if (currentSkin == Skin.VANILLA) return VANILLA;
+        if (currentSkin != Skin.MODERN) return VANILLA;
         return currentMode == Mode.DARK ? DARK : LIGHT;
     }
 
 
     public static void fillRoundedRect(GuiGraphics g, int x, int y, int w, int h, int radius, int color) {
-        if (currentSkin == Skin.VANILLA) { g.fill(x, y, x + w, y + h, color); return; }
+        if (currentSkin != Skin.MODERN) { g.fill(x, y, x + w, y + h, color); return; }
         if (radius <= 0 || w < radius * 2 || h < radius * 2) {
             g.fill(x, y, x + w, y + h, color);
             return;
@@ -149,7 +152,7 @@ public final class UITheme {
     }
 
     public static void fillRoundedRectFast(GuiGraphics g, int x, int y, int w, int h, int radius, int color) {
-        if (currentSkin == Skin.VANILLA) { g.fill(x, y, x + w, y + h, color); return; }
+        if (currentSkin != Skin.MODERN) { g.fill(x, y, x + w, y + h, color); return; }
         if (radius <= 0 || w < radius * 2 || h < radius * 2) {
             g.fill(x, y, x + w, y + h, color);
             return;
@@ -174,7 +177,7 @@ public final class UITheme {
     }
 
     public static void drawSoftGlow(GuiGraphics g, int x, int y, int w, int h, int radius, int color, int maxAlpha) {
-        if (currentSkin == Skin.VANILLA) return; // vanilla has no soft focus halos
+        if (currentSkin != Skin.MODERN) return; // vanilla has no soft focus halos
         for (int i = 3; i >= 1; i--) {
             int alpha = Math.max(1, maxAlpha / (i + 1));
             fillSoftRoundedRect(g, x - i, y - i, w + i * 2, h + i * 2, radius + i, withAlpha(color, alpha));
@@ -210,7 +213,7 @@ public final class UITheme {
     }
 
     public static void drawRoundedBorderFast(GuiGraphics g, int x, int y, int w, int h, int radius, int color) {
-        if (currentSkin == Skin.VANILLA) { drawVanillaBevel(g, x, y, w, h, color, true); return; }
+        if (currentSkin != Skin.MODERN) { drawVanillaBevel(g, x, y, w, h, color, true); return; }
         if (radius <= 0 || w < radius * 2 || h < radius * 2) {
             g.fill(x, y, x + w, y + 1, color);
             g.fill(x, y + h - 1, x + w, y + h, color);
@@ -256,7 +259,7 @@ public final class UITheme {
     }
 
     public static void drawRoundedBorder(GuiGraphics g, int x, int y, int w, int h, int radius, int color) {
-        if (currentSkin == Skin.VANILLA) { drawVanillaBevel(g, x, y, w, h, color, true); return; }
+        if (currentSkin != Skin.MODERN) { drawVanillaBevel(g, x, y, w, h, color, true); return; }
         if (radius <= 0) {
             g.fill(x, y, x + w, y + 1, color);
             g.fill(x, y + h - 1, x + w, y + h, color);
@@ -277,7 +280,7 @@ public final class UITheme {
     
     public static void fillRoundedRectEx(GuiGraphics g, int x, int y, int w, int h,
                                          int rTL, int rTR, int rBR, int rBL, int color) {
-        if (currentSkin == Skin.VANILLA) { g.fill(x, y, x + w, y + h, color); return; }
+        if (currentSkin != Skin.MODERN) { g.fill(x, y, x + w, y + h, color); return; }
         rTL = Math.min(rTL, Math.min(w / 2, h / 2));
         rTR = Math.min(rTR, Math.min(w / 2, h / 2));
         rBR = Math.min(rBR, Math.min(w / 2, h / 2));
@@ -311,7 +314,7 @@ public final class UITheme {
     
     public static void drawRoundedBorderEx(GuiGraphics g, int x, int y, int w, int h,
                                            int rTL, int rTR, int rBR, int rBL, int color) {
-        if (currentSkin == Skin.VANILLA) { drawVanillaBevel(g, x, y, w, h, color, true); return; }
+        if (currentSkin != Skin.MODERN) { drawVanillaBevel(g, x, y, w, h, color, true); return; }
         rTL = Math.min(rTL, Math.min(w / 2, h / 2));
         rTR = Math.min(rTR, Math.min(w / 2, h / 2));
         rBR = Math.min(rBR, Math.min(w / 2, h / 2));
@@ -532,7 +535,7 @@ public final class UITheme {
     }
 
     public static void drawCardShadow(GuiGraphics g, int x, int y, int w, int h, int radius) {
-        if (currentSkin == Skin.VANILLA) return; // vanilla has no soft drop shadows
+        if (currentSkin != Skin.MODERN) return; // vanilla has no soft drop shadows
         var c = colors();
         int color = withAlpha(c.shadow(), 0x40);
         g.fill(x + 2, y + h, x + w + 2, y + h + 3, color);
@@ -541,7 +544,7 @@ public final class UITheme {
 
     public static void drawGlassBackground(GuiGraphics g, int x, int y, int w, int h, int radius) {
         var c = colors();
-        if (currentSkin == Skin.VANILLA) {
+        if (currentSkin != Skin.MODERN) {
             g.fill(x, y, x + w, y + h, c.glassBg());
             drawVanillaBevel(g, x, y, w, h, c.widgetBg(), false);
             return;
@@ -554,7 +557,10 @@ public final class UITheme {
 
     public static void drawGlassPanel(GuiGraphics g, int x, int y, int w, int h, int radius) {
         var c = colors();
-        if (currentSkin == Skin.VANILLA) {
+        if (currentSkin == Skin.CUSTOM && UITextureStore.global().draw(UITextureSlot.PANEL, g, x, y, w, h)) {
+            return;
+        }
+        if (currentSkin != Skin.MODERN) {
             // Stone window: a dark interior framed by the classic MC bevel — light gray top/left,
             // dark gray bottom/right — with a 1px black outline, like an inventory/container border.
             int interior = 0xFF000000 | (lerpColor(c.panelBg(), 0xFFFFFFFF, 0.06f) & 0xFFFFFF);
@@ -572,7 +578,7 @@ public final class UITheme {
 
     public static void drawGradientButton(GuiGraphics g, int x, int y, int w, int h, int radius,
                                           int colorTop, int colorBottom, float hoverProgress) {
-        if (currentSkin == Skin.VANILLA) {
+        if (currentSkin != Skin.MODERN) {
             g.fill(x, y, x + w, y + h, colorBottom);
             drawVanillaBevel(g, x, y, w, h, colorTop, true);
             if (hoverProgress > 0.01f) {
@@ -591,7 +597,10 @@ public final class UITheme {
 
     public static void renderTooltipBackground(GuiGraphics g, int x, int y, int w, int h) {
         var c = colors();
-        if (currentSkin == Skin.VANILLA) {
+        if (currentSkin == Skin.CUSTOM && UITextureStore.global().draw(UITextureSlot.TOOLTIP, g, x, y, w, h)) {
+            return;
+        }
+        if (currentSkin != Skin.MODERN) {
             // Faithful MC tooltip frame: 0xF0100010 fill with the iconic purple gradient border
             // (top 0x505000FF → bottom 0x5028007F) inset by 1px on all sides.
             int bg = 0xF0100010;

@@ -118,6 +118,16 @@ public final class KeybindViewerConfig {
         save();
     }
 
+    /** Id of the active custom UI texture pack (null/blank = the default loose pack). */
+    public String uiTexturePack() {
+        return data.uiTexturePack;
+    }
+
+    public void setUiTexturePack(String packId) {
+        data.uiTexturePack = packId;
+        save();
+    }
+
     public KeyboardLayoutData.Style defaultLayoutStyle() {
         if (data.defaultLayout == null || data.defaultLayout.isBlank()) {
             return KeyboardLayoutData.Style.ANSI_104;
@@ -141,5 +151,6 @@ public final class KeybindViewerConfig {
         boolean mousePanelCollapsed;
         boolean detailPanelCollapsed;
         String uiSkin;
+        String uiTexturePack;
     }
 }

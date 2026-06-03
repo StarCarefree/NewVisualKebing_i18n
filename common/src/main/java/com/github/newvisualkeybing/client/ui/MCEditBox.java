@@ -87,9 +87,14 @@ public class MCEditBox extends EditBox {
         boolean focused = isFocused();
         boolean hovered = isMouseOver(mouseX, mouseY);
 
-        if (UITheme.vanilla()) {
-            // Pixel-exact vanilla EditBox: a 1px border (white when focused, else gray #A0A0A0)
-            // behind a pure-black interior — no rounding, gloss, or focus glow.
+        if (UITheme.flat()) {
+            // Custom skin: a user editbox texture wins; otherwise the pixel-exact vanilla EditBox
+            // (1px border — white when focused, else gray #A0A0A0 — behind a pure-black interior).
+            if (UITheme.custom()) {
+                UITextureSlot slot = focused && UITextureStore.global().has(UITextureSlot.EDITBOX_FOCUSED)
+                        ? UITextureSlot.EDITBOX_FOCUSED : UITextureSlot.EDITBOX;
+                if (UITextureStore.global().draw(slot, graphics, x, y, w, h)) return;
+            }
             int border = focused ? 0xFFFFFFFF : 0xFFA0A0A0;
             graphics.fill(x - 1, y - 1, x + w + 1, y + h + 1, border);
             graphics.fill(x, y, x + w, y + h, 0xFF000000);
@@ -150,7 +155,7 @@ public class MCEditBox extends EditBox {
             boolean cursorVisible = renderFrame / 12 % 2 == 0;
             if (cursorVisible) {
                 int cursorX = textX + font.width(visible.substring(0, localCursor));
-                int cursorColor = UITheme.vanilla() ? 0xFFD0D0D0 : colors.accentLight();
+                int cursorColor = UITheme.flat() ? 0xFFD0D0D0 : colors.accentLight();
                 UITheme.fillSoftRoundedRect(graphics, cursorX, textY - 2, 1, font.lineHeight + 4, 1, cursorColor);
             }
         }
