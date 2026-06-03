@@ -1,7 +1,7 @@
 package com.github.newvisualkeybing.platform.services;
 
+import com.github.newvisualkeybing.client.keyboard.SceneProbe;
 import net.minecraft.client.KeyMapping;
-import net.minecraft.client.Minecraft;
 
 public interface IPlatformHelper {
 
@@ -23,26 +23,45 @@ public interface IPlatformHelper {
     
     default String getModName(String modId) { return null; }
 
-    
+
     default ConflictContext getConflictContext(KeyMapping mapping) {
         return ConflictContext.UNIVERSAL;
     }
 
     /**
-     * Whether {@code mapping}'s conflict context can fire in the current scene right now. Used by
-     * priority resolution to fall through from a higher-priority binding that cannot trigger here
-     * (e.g. a GUI-only binding while in-game) to a lower-priority one that can, instead of letting
-     * the inactive high-priority binding block it. The default derives activeness from the
-     * conflict context and whether a screen is open; platforms with a richer context API override.
+     * Whether two same-key bindings would actually contend in the same scene. This is the
+     * <em>relational</em> conflict test used by the viewer and the edit screen. The default falls
+     * back to the coarse 4-value {@link ConflictContext#conflicts} approximation; the Forge platform
+     * overrides it to delegate to the authoritative native {@code IKeyConflictContext.conflicts},
+     * so mod-defined custom contexts (collapsed to {@link ConflictContext#UNKNOWN} by
+     * {@link #getConflictContext}) keep their real mutual-exclusion semantics instead of being
+     * forced to "UNKNOWN == UNKNOWN ⇒ conflict" (false positive) or "UNKNOWN vs IN_GAME ⇒ no
+     * conflict" (false negative).
      */
-    default boolean isContextActive(KeyMapping mapping) {
-        Minecraft mc = Minecraft.getInstance();
-        boolean screenOpen = mc != null && mc.screen != null;
+    default boolean contextsConflict(KeyMapping a, KeyMapping b) {
+        ConflictContext ca = getConflictContext(a);
+        ConflictContext cb = getConflictContext(b);
+        return ca != null && cb != null && ca.conflicts(cb);
+    }
+
+    /**
+     * Whether {@code mapping}'s conflict context can fire in the given scene. Used by priority
+     * resolution to fall through from a higher-priority binding that cannot trigger here (e.g. a
+     * GUI-only binding while in-game) to a lower-priority one that can. The default derives
+     * activeness from the conflict context and the scene; platforms with a richer context API
+     * override (Forge delegates to the native {@code IKeyConflictContext.isActive}).
+     */
+    default boolean isContextActive(KeyMapping mapping, SceneProbe scene) {
         return switch (getConflictContext(mapping)) {
-            case IN_GAME -> !screenOpen;
-            case GUI -> screenOpen;
+            case IN_GAME -> scene.hasLevel() && !scene.screenOpen();
+            case GUI -> scene.screenOpen();
             case UNIVERSAL, UNKNOWN -> true;
         };
+    }
+
+    /** Convenience overload that captures the current scene; prefer the scene-aware variant in loops. */
+    default boolean isContextActive(KeyMapping mapping) {
+        return isContextActive(mapping, SceneProbe.capture());
     }
 
     default InputModifier getKeyModifier(KeyMapping mapping) {

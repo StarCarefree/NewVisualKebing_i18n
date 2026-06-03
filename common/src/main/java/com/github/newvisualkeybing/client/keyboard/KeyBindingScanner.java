@@ -499,9 +499,7 @@ public class KeyBindingScanner {
             for (int j = i + 1; j < infos.size(); j++) {
                 if (infos.get(j).conflictIgnored()) continue;
                 if (comboAware && !sameActivator(infos.get(i), infos.get(j))) continue;
-                ConflictContext ci = infos.get(i).conflictContext();
-                ConflictContext cj = infos.get(j).conflictContext();
-                if (ci != null && cj != null && ci.conflicts(cj)) return KeyStatus.CONFLICT;
+                if (contextsConflict(infos.get(i), infos.get(j))) return KeyStatus.CONFLICT;
             }
         }
         if (comboAware && hasCombo) return KeyStatus.COMBO;
@@ -514,6 +512,23 @@ public class KeyBindingScanner {
 
     private static boolean hasStoredCombo(KeyBindingInfo info) {
         return KeybindComboStore.global().hasCurrentCombo(info.translationKey());
+    }
+
+    /**
+     * Relational conflict test between two same-key bindings. Resolves the live {@link KeyMapping}s
+     * and delegates to {@code Services.PLATFORM.contextsConflict} so Forge uses the authoritative
+     * native {@code IKeyConflictContext.conflicts} (custom mod contexts keep their real semantics).
+     * Falls back to the captured 4-value context approximation if either mapping cannot be resolved.
+     */
+    private static boolean contextsConflict(KeyBindingInfo a, KeyBindingInfo b) {
+        KeyMapping ma = KeybindComboStore.findMapping(a.translationKey());
+        KeyMapping mb = KeybindComboStore.findMapping(b.translationKey());
+        if (ma != null && mb != null) {
+            return Services.PLATFORM.contextsConflict(ma, mb);
+        }
+        ConflictContext ca = a.conflictContext();
+        ConflictContext cb = b.conflictContext();
+        return ca != null && cb != null && ca.conflicts(cb);
     }
 
     private static boolean sameActivator(KeyBindingInfo a, KeyBindingInfo b) {

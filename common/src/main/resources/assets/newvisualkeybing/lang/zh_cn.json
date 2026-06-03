@@ -173,7 +173,7 @@
   "screen.newvisualkeybing.viewer.profile.reloaded": "已从磁盘重新加载 %s",
   "screen.newvisualkeybing.viewer.profile.combos_reloaded": "已从磁盘重新加载组合按键",
   "screen.newvisualkeybing.viewer.priority.changed": "%s 优先级: %s",
-  "screen.newvisualkeybing.viewer.conflict_ignore.on": "%s 已标记为不计入冲突",
+  "screen.newvisualkeybing.viewer.conflict_ignore.on": "%s 已标记为不计入冲突(仅隐藏告警，不改变触发优先级)",
   "screen.newvisualkeybing.viewer.conflict_ignore.off": "%s 已恢复冲突检测",
   "screen.newvisualkeybing.viewer.board.open": "拖拽绑定",
   "screen.newvisualkeybing.board.title": "拖拽绑定板",

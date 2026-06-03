@@ -3,9 +3,11 @@ package com.github.newvisualkeybing.client.keyboard;
 import com.github.newvisualkeybing.Constants;
 import com.github.newvisualkeybing.mixin.KeyMappingAccessor;
 import com.github.newvisualkeybing.platform.Services;
+import com.github.newvisualkeybing.platform.services.IPlatformHelper.InputModifier;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -42,34 +44,6 @@ public final class KeybindPriorityEnforcer {
     public static void resetAndEnforce() {
         KeyMapping.resetMapping();
         applyPriority();
-    }
-
-    /**
-     * Read the live {@code KeyMapping.MAP} winner for the given key, or {@code null} if
-     * the field cannot be located (older mappings) or no mapping is bound. Used by the
-     * dispatch mixin to decide whether vanilla {@code set}/{@code click} would touch a
-     * chord mapping that we want to override.
-     */
-    public static KeyMapping mapWinner(InputConstants.Key key) {
-        if (key == null || key == InputConstants.UNKNOWN) return null;
-        Field field = cachedMapField;
-        if (field == null && !lookupFailed) {
-            field = locateMapField();
-            if (field == null) {
-                lookupFailed = true;
-                return null;
-            }
-            cachedMapField = field;
-        }
-        if (field == null) return null;
-        try {
-            @SuppressWarnings("unchecked")
-            Map<InputConstants.Key, KeyMapping> liveMap = (Map<InputConstants.Key, KeyMapping>) field.get(null);
-            return liveMap == null ? null : liveMap.get(key);
-        } catch (IllegalAccessException ignored) {
-            lookupFailed = true;
-            return null;
-        }
     }
 
     /**
@@ -123,31 +97,95 @@ public final class KeybindPriorityEnforcer {
     }
 
     /**
-     * Resolve which of {@code candidates} (all bound to the same key) should actually fire, by
-     * priority tier with scene-aware fall-through:
-     * <ul>
-     *   <li>bindings of the <em>same</em> priority all fire together;</li>
-     *   <li>only the highest priority tier fires; lower tiers yield to it;</li>
-     *   <li>but a higher tier that cannot trigger in the current scene (its conflict context is
-     *       inactive) is skipped so a lower tier that <em>can</em> trigger fires instead — the
-     *       higher tier never silently blocks a usable lower one.</li>
-     * </ul>
-     * Returns the subset of {@code candidates} to activate (every member of the winning tier).
+     * Resolve which of {@code candidates} (all bound to the same key) should actually fire. The
+     * candidate set is narrowed in three stages, then the highest surviving priority tier fires:
+     * <ol>
+     *   <li><b>Modifier gating</b> — replicate Forge's {@code KeyMappingLookup.getAll}: only the
+     *       bucket matching the currently-held modifier (Ctrl &gt; Shift &gt; Alt precedence) is
+     *       eligible, falling back to the plain (no-modifier) bucket only when no binding requires
+     *       the held modifier. This stops a bare-key press from also firing a native {@code Ctrl+G}
+     *       binding once this mixin has taken over dispatch.</li>
+     *   <li><b>Scene gating</b> — drop bindings whose conflict context cannot trigger in the current
+     *       scene, so a higher-priority binding that is inactive here never blocks a lower one that
+     *       can fire (scene-aware fall-through).</li>
+     *   <li><b>Priority tiering</b> — among what survives, only the highest priority tier fires;
+     *       equal-priority bindings in that tier all fire together.</li>
+     * </ol>
+     * Stages 1 and 2 use a single shared {@link SceneProbe} snapshot so dispatch and display agree.
+     * Returns every member of the winning tier (possibly empty).
      */
     public static List<KeyMapping> resolveByPriority(List<KeyMapping> candidates) {
-        if (candidates.size() <= 1) return candidates;
-        Integer best = null;
-        for (KeyMapping km : candidates) {
-            if (!Services.PLATFORM.isContextActive(km)) continue;
-            int priority = KeybindProfileStore.globalPriorityOf(km.getName());
-            if (best == null || priority > best) best = priority;
+        if (candidates.isEmpty()) return candidates;
+        return resolveActive(activeModifierBucket(candidates));
+    }
+
+    /**
+     * Priority resolution for chord (combo) candidates. Chords are already modifier-resolved by the
+     * mod's own first/second-key mechanism, so native {@link #activeModifierBucket modifier gating}
+     * is skipped (it would wrongly drop a chord whose mapping also declares a native key modifier);
+     * scene gating and priority tiering still apply.
+     */
+    public static List<KeyMapping> resolveCombosByPriority(List<KeyMapping> candidates) {
+        if (candidates.isEmpty()) return candidates;
+        return resolveActive(candidates);
+    }
+
+    /** Scene-gate {@code bucket} then return every member of its highest surviving priority tier. */
+    private static List<KeyMapping> resolveActive(List<KeyMapping> bucket) {
+        SceneProbe scene = SceneProbe.capture();
+        List<KeyMapping> active = new ArrayList<>(bucket.size());
+        for (KeyMapping km : bucket) {
+            if (Services.PLATFORM.isContextActive(km, scene)) active.add(km);
         }
-        if (best == null) return Collections.emptyList();
+        if (active.isEmpty()) return Collections.emptyList();
+        int best = Integer.MIN_VALUE;
+        for (KeyMapping km : active) {
+            best = Math.max(best, KeybindProfileStore.globalPriorityOf(km.getName()));
+        }
         List<KeyMapping> result = new ArrayList<>();
-        for (KeyMapping km : candidates) {
+        for (KeyMapping km : active) {
             if (KeybindProfileStore.globalPriorityOf(km.getName()) == best) result.add(km);
         }
         return result;
+    }
+
+    /**
+     * The subset of {@code candidates} whose key modifier matches the currently-held one, mirroring
+     * Forge's {@code KeyMappingLookup.getAll}. The single active modifier follows Forge's
+     * Ctrl&gt;Shift&gt;Alt precedence (via {@link Screen#hasControlDown()} etc., which work on both
+     * loaders); when a modifier is held but no candidate requires it, dispatch falls back to the
+     * plain bucket so an unrelated held modifier never swallows a plain binding. On Fabric every
+     * mapping reports {@link InputModifier#NONE}, so this collapses to the plain bucket and is a
+     * no-op — preserving vanilla behaviour there.
+     */
+    private static List<KeyMapping> activeModifierBucket(List<KeyMapping> candidates) {
+        InputModifier active = currentModifier();
+        List<KeyMapping> primary = filterByModifier(candidates, active);
+        if (active != InputModifier.NONE && primary.isEmpty()) {
+            return filterByModifier(candidates, InputModifier.NONE);
+        }
+        return primary;
+    }
+
+    private static List<KeyMapping> filterByModifier(List<KeyMapping> candidates, InputModifier wanted) {
+        List<KeyMapping> result = new ArrayList<>(candidates.size());
+        for (KeyMapping km : candidates) {
+            if (normalizeModifier(Services.PLATFORM.getKeyModifier(km)) == wanted) result.add(km);
+        }
+        return result;
+    }
+
+    /** Forge's active-modifier precedence; both loaders expose these static helpers. */
+    private static InputModifier currentModifier() {
+        if (Screen.hasControlDown()) return InputModifier.CONTROL;
+        if (Screen.hasShiftDown()) return InputModifier.SHIFT;
+        if (Screen.hasAltDown()) return InputModifier.ALT;
+        return InputModifier.NONE;
+    }
+
+    /** Treat {@link InputModifier#UNKNOWN} as the plain bucket so it never strands a binding. */
+    private static InputModifier normalizeModifier(InputModifier modifier) {
+        return modifier == null || modifier == InputModifier.UNKNOWN ? InputModifier.NONE : modifier;
     }
 
     public static void applyPriority() {

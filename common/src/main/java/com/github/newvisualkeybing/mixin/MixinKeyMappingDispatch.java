@@ -60,7 +60,7 @@ public class MixinKeyMappingDispatch {
         List<KeyMapping> activeCombos = newvisualkeybing$activeComboMappings(matches);
         List<KeyMapping> winners = activeCombos.isEmpty()
                 ? KeybindPriorityEnforcer.resolveByPriority(singles)
-                : KeybindPriorityEnforcer.resolveByPriority(activeCombos);
+                : KeybindPriorityEnforcer.resolveCombosByPriority(activeCombos);
         for (KeyMapping winner : winners) {
             newvisualkeybing$incrementClick(winner);
         }
@@ -121,7 +121,7 @@ public class MixinKeyMappingDispatch {
         }
         List<KeyMapping> activeCombos = newvisualkeybing$activeComboMappings(matches);
         if (!activeCombos.isEmpty()) {
-            Set<KeyMapping> winners = new HashSet<>(KeybindPriorityEnforcer.resolveByPriority(activeCombos));
+            Set<KeyMapping> winners = new HashSet<>(KeybindPriorityEnforcer.resolveCombosByPriority(activeCombos));
             for (KeybindComboStore.Match match : matches) {
                 match.mapping().setDown(winners.contains(match.mapping()));
             }

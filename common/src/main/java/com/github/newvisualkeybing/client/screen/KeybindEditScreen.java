@@ -735,9 +735,9 @@ public class KeybindEditScreen extends FixedScaleScreen {
             if (!sameInputKey(km, other)) continue;
             String otherActivator = store.activatorSignature(other, Services.PLATFORM.getKeyModifier(other));
             if (!Objects.equals(currentActivator, otherActivator)) continue;
-            var currentContext = Services.PLATFORM.getConflictContext(km);
-            var otherContext = Services.PLATFORM.getConflictContext(other);
-            if (currentContext != null && otherContext != null && currentContext.conflicts(otherContext)) {
+            // Relational test: Forge delegates to the native IKeyConflictContext.conflicts so custom
+            // mod contexts keep their real mutual-exclusion semantics; other platforms approximate.
+            if (Services.PLATFORM.contextsConflict(km, other)) {
                 return true;
             }
         }

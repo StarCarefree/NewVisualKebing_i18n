@@ -173,7 +173,7 @@
   "screen.newvisualkeybing.viewer.profile.reloaded": "Reloaded %s from disk",
   "screen.newvisualkeybing.viewer.profile.combos_reloaded": "Combos reloaded from disk",
   "screen.newvisualkeybing.viewer.priority.changed": "%s priority: %s",
-  "screen.newvisualkeybing.viewer.conflict_ignore.on": "%s excluded from conflicts",
+  "screen.newvisualkeybing.viewer.conflict_ignore.on": "%s excluded from conflict display (still triggers by priority)",
   "screen.newvisualkeybing.viewer.conflict_ignore.off": "%s conflict detection restored",
   "screen.newvisualkeybing.viewer.board.open": "Drag-bind",
   "screen.newvisualkeybing.board.title": "Drag-to-Bind Board",
