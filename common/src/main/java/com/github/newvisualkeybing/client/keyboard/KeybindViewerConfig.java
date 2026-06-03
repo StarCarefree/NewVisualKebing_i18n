@@ -1,6 +1,7 @@
 package com.github.newvisualkeybing.client.keyboard;
 
 import com.github.newvisualkeybing.Constants;
+import com.github.newvisualkeybing.client.ui.UITheme;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
@@ -103,6 +104,20 @@ public final class KeybindViewerConfig {
         save();
     }
 
+    public UITheme.Skin uiSkin() {
+        if (data.uiSkin == null) return UITheme.Skin.MODERN;
+        try {
+            return UITheme.Skin.valueOf(data.uiSkin);
+        } catch (IllegalArgumentException ignored) {
+            return UITheme.Skin.MODERN;
+        }
+    }
+
+    public void setUiSkin(UITheme.Skin skin) {
+        data.uiSkin = skin == null ? null : skin.name();
+        save();
+    }
+
     public KeyboardLayoutData.Style defaultLayoutStyle() {
         if (data.defaultLayout == null || data.defaultLayout.isBlank()) {
             return KeyboardLayoutData.Style.ANSI_104;
@@ -125,5 +140,6 @@ public final class KeybindViewerConfig {
         String defaultLayout;
         boolean mousePanelCollapsed;
         boolean detailPanelCollapsed;
+        String uiSkin;
     }
 }

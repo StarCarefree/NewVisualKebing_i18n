@@ -26,6 +26,7 @@ final class KeybindKeyboardRenderer {
     private float cachedKeyScale = Float.NaN;
     private KeyDrawState[] drawStates = new KeyDrawState[0];
     private long lastFrameMs;
+    private int cachedThemeVersion = Integer.MIN_VALUE;
     private long cachedComboVersion = Long.MIN_VALUE;
     private Set<Integer> cachedComboKeys = java.util.Collections.emptySet();
 
@@ -46,6 +47,9 @@ final class KeybindKeyboardRenderer {
         refreshDrawStates(font, style, keyboardX, keyboardY, keyScale);
 
         long scannerVersion = scanner.version();
+        int themeVersion = UITheme.themeVersion();
+        boolean themeChanged = themeVersion != cachedThemeVersion;
+        cachedThemeVersion = themeVersion;
         float dt = lastFrameMs > 0 ? Math.min((nowMs - lastFrameMs) / 1000f, 0.05f) : 0.016f;
         lastFrameMs = nowMs;
         Set<Integer> comboKeys = comboParticipantKeys();
@@ -74,6 +78,8 @@ final class KeybindKeyboardRenderer {
                 state.bindingCount = scanner.getBindingCount(state.glfwKey);
                 state.cachedBindings = scanner.getBindings(state.glfwKey);
                 state.cachedInlineMaxW = Integer.MIN_VALUE;
+                refreshCachedColors(state);
+            } else if (themeChanged) {
                 refreshCachedColors(state);
             }
             state.hoverProgress = advanceProgress(state.hoverProgress,

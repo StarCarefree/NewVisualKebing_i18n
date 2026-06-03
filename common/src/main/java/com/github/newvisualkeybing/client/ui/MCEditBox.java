@@ -86,6 +86,16 @@ public class MCEditBox extends EditBox {
         int h = getHeight();
         boolean focused = isFocused();
         boolean hovered = isMouseOver(mouseX, mouseY);
+
+        if (UITheme.vanilla()) {
+            // Pixel-exact vanilla EditBox: a 1px border (white when focused, else gray #A0A0A0)
+            // behind a pure-black interior — no rounding, gloss, or focus glow.
+            int border = focused ? 0xFFFFFFFF : 0xFFA0A0A0;
+            graphics.fill(x - 1, y - 1, x + w + 1, y + h + 1, border);
+            graphics.fill(x, y, x + w, y + h, 0xFF000000);
+            return;
+        }
+
         int accent = focused ? colors.accent() : hovered ? colors.accentAlt() : colors.widgetBorder();
         int fill = focused
                 ? UITheme.lerpColor(colors.inputBg(), colors.accent(), 0.12f)
@@ -140,7 +150,8 @@ public class MCEditBox extends EditBox {
             boolean cursorVisible = renderFrame / 12 % 2 == 0;
             if (cursorVisible) {
                 int cursorX = textX + font.width(visible.substring(0, localCursor));
-                UITheme.fillSoftRoundedRect(graphics, cursorX, textY - 2, 1, font.lineHeight + 4, 1, colors.accentLight());
+                int cursorColor = UITheme.vanilla() ? 0xFFD0D0D0 : colors.accentLight();
+                UITheme.fillSoftRoundedRect(graphics, cursorX, textY - 2, 1, font.lineHeight + 4, 1, cursorColor);
             }
         }
 

@@ -5,8 +5,12 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 
 public class MCButton extends AbstractWidget {
+
+    // Vanilla widget atlas; the button sprite lives at x=0 with v=46/66/86 (disabled/normal/hover).
+    private static final ResourceLocation VANILLA_WIDGETS = new ResourceLocation("textures/gui/widgets.png");
 
     private static final int CORNER_RADIUS = 6;
     private static final float ANIM_SPEED_IN = 0.15f;
@@ -23,6 +27,7 @@ public class MCButton extends AbstractWidget {
     private int cachedTextColor = 0;
     private boolean cacheDirty = true;
     private float lastEasedHover = 0f;
+    private int cachedThemeVersion = -1;
 
     @FunctionalInterface
     public interface OnPress {
@@ -45,6 +50,12 @@ public class MCButton extends AbstractWidget {
         var colors = UITheme.colors();
         int x = getX(), y = getY(), w = getWidth(), h = getHeight();
 
+        int themeVersion = UITheme.themeVersion();
+        if (cachedThemeVersion != themeVersion) {
+            cachedThemeVersion = themeVersion;
+            cacheDirty = true;
+        }
+
         float easedHover = UITheme.easeOutCubic(hoverProgress);
         float easedPress = UITheme.easeOutCubic(pressAnimation);
 
@@ -63,19 +74,34 @@ public class MCButton extends AbstractWidget {
             return;
         }
 
-        int radius = Math.min(CORNER_RADIUS, Math.max(2, Math.min(w, h) / 2));
-        renderSurface(graphics, x, y, w, h, radius, easedHover, easedPress);
-
         Minecraft mc = Minecraft.getInstance();
         int textWidth = mc.font.width(getMessage());
         int textX = x + (w - textWidth) / 2;
         int textY = y + (h - mc.font.lineHeight) / 2 + 1;
+
+        if (UITheme.vanilla()) {
+            renderVanillaButton(graphics, x, y, w, h);
+            // Vanilla button text: white when active, gray when disabled, with the standard shadow.
+            int vColor = this.active ? 0xFFFFFFFF : 0xFFA0A0A0;
+            graphics.drawString(mc.font, getMessage(), textX, textY, vColor, true);
+            return;
+        }
+
+        int radius = Math.min(CORNER_RADIUS, Math.max(2, Math.min(w, h) / 2));
+        renderSurface(graphics, x, y, w, h, radius, easedHover, easedPress);
 
         if (this.active) {
             graphics.drawString(mc.font, getMessage(), textX + 1, textY + 1,
                     UITheme.withAlpha(0xFF000000, 0x60), false);
         }
         graphics.drawString(mc.font, getMessage(), textX, textY, cachedTextColor, true);
+    }
+
+    /** Pixel-perfect vanilla button: nine-sliced from widgets.png, state chosen by active/hover. */
+    private void renderVanillaButton(GuiGraphics graphics, int x, int y, int w, int h) {
+        boolean hovered = isHoveredOrFocused() && this.active;
+        int v = !this.active ? 46 : hovered ? 86 : 66;
+        graphics.blitNineSliced(VANILLA_WIDGETS, x, y, w, h, 20, 4, 200, 20, 0, v);
     }
 
     private void renderSurface(GuiGraphics graphics, int x, int y, int w, int h, int radius,

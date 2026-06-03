@@ -69,6 +69,7 @@ public class KeybindViewerScreen extends FixedScaleScreen {
     private MCButton modToggleButton;
     private MCButton profileToggleButton;
     private MCButton layoutButton;
+    private MCButton skinButton;
 
     private KeyboardLayoutData.Style currentStyle = KeybindViewerConfig.global().defaultLayoutStyle();
 
@@ -188,8 +189,10 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         int xBoard = xManage - btnGap - btnBoardW;
         int xCombo = xBoard - btnGap - btnComboW;
         int xLayout = xCombo - btnGap - btnLayoutW;
+        int btnSkinW = fitButtonWidth(skinLabel(), compact ? 40 : 54, compact ? 62 : 82);
+        int xSkin = xLayout - btnGap - btnSkinW;
 
-        computeToolbarGeometry(compact);
+        computeToolbarGeometry(compact, xSkin);
 
         int searchBoxY = HEADER_H + (TOOLBAR_H - SEARCH_BH) / 2;
         searchBox = new MCEditBox(font, toolbarSearchX, searchBoxY, toolbarSearchW, SEARCH_BH,
@@ -225,6 +228,17 @@ public class KeybindViewerScreen extends FixedScaleScreen {
             button.setMessage(layoutLabel(currentStyle));
         });
         addRenderableWidget(layoutButton);
+
+        skinButton = MCButton.create(xSkin, btnY, btnSkinW, btnH,
+                skinLabel(), button -> {
+            UITheme.Skin next = UITheme.getSkin() == UITheme.Skin.VANILLA
+                    ? UITheme.Skin.MODERN : UITheme.Skin.VANILLA;
+            UITheme.setSkin(next);
+            viewerConfig.setUiSkin(next);
+            button.setMessage(skinLabel());
+            showNotice(skinLabel().getString());
+        });
+        addRenderableWidget(skinButton);
 
         manageButton = MCButton.create(xManage, btnY, btnManageW, btnH,
                 Component.translatable("screen.newvisualkeybing.viewer.manage"),
@@ -264,7 +278,7 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         refreshFilters();
     }
 
-    private void computeToolbarGeometry(boolean compact) {
+    private void computeToolbarGeometry(boolean compact, int headerButtonLeft) {
         int tabsW = 0;
         for (int w : tabWidths) tabsW += w;
         tabsW += (tabWidths.length - 1) * 4;
@@ -272,7 +286,6 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         int outerPad = 12;
         int innerGap = 12;
         int totalAvail = width - outerPad * 2;
-        int headerButtonLeft = layoutButton == null ? width - 8 : layoutButton.getX();
         int titleReservedRight = Math.max(170, Math.min(headerButtonLeft - 12, width / 3));
         int searchW = Math.min(SEARCH_W_DEFAULT, Math.max(140, width - titleReservedRight - outerPad * 2));
 
@@ -412,7 +425,8 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         g.fill(0, HEADER_H - 1, width, HEADER_H, c.divider());
         g.fill(0, HEADER_H, width, HEADER_H + 1, UITheme.withAlpha(c.accent(), 0x70));
 
-        int titleRight = layoutButton == null ? width - 10 : layoutButton.getX() - 10;
+        int titleRight = skinButton != null ? skinButton.getX() - 10
+                : layoutButton == null ? width - 10 : layoutButton.getX() - 10;
         String fittedTitle = fitToWidth(font, title.getString(), Math.max(40, titleRight - 12));
         g.drawString(font, fittedTitle, 12, (HEADER_H - font.lineHeight) / 2, c.textPrimary(), true);
     }
@@ -680,6 +694,12 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         }
     }
 
+
+    private Component skinLabel() {
+        return Component.translatable(UITheme.getSkin() == UITheme.Skin.VANILLA
+                ? "screen.newvisualkeybing.viewer.skin.vanilla"
+                : "screen.newvisualkeybing.viewer.skin.modern");
+    }
 
     private Component layoutLabel(KeyboardLayoutData.Style style) {
         return switch (style) {
