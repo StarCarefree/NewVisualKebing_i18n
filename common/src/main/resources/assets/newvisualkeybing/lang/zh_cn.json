@@ -227,5 +227,5 @@
   "screen.newvisualkeybing.viewer.combo.row.press_second_short": "%s + …",
   "screen.newvisualkeybing.viewer.combo.modifier_cleared": "已清除 %s 的修饰键，仅保留单键绑定",
   "screen.newvisualkeybing.viewer.waiting_combo": "按下并松开按键 = 单键；按住第一个键再按第二个键 = 组合；ESC 解绑",
-  "screen.newvisualkeybing.viewer.edit_hint_combo": "点击变更：按下并松开 = 单键；按住任意键再按另一键 = 组合；右键清除组合"
+  "screen.newvisualkeybing.viewer.edit_hint_combo": "点击变更：按下并松开 = 单键；按住任意键再按另一键 = 组合键；右键清除组合"
 }
