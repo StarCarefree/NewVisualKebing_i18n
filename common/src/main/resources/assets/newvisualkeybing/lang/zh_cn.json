@@ -1,5 +1,5 @@
 {
-  "key.categories.newvisualkeybing": "New Visual Keybing",
+  "key.category.newvisualkeybing.newvisualkeybing": "New Visual Keybing",
   "key.newvisualkeybing.open_viewer": "打开按键查看器",
   "screen.newvisualkeybing.viewer.title": "New Visual Keybing",
   "screen.newvisualkeybing.viewer.subtitle": "全息按键地图，支持鼠标与模组筛选",
@@ -92,6 +92,8 @@
   "screen.newvisualkeybing.viewer.quick_edit.empty": "该键尚无绑定动作",
   "screen.newvisualkeybing.viewer.quick_edit.listening": "按下要绑定到 %s 的键",
   "screen.newvisualkeybing.viewer.scale": "缩放 %dpx",
+  "screen.newvisualkeybing.viewer.zoom": "倍率 %d%%",
+  "screen.newvisualkeybing.viewer.zoom_hint": "Ctrl+滚轮缩放，拖拽平移",
   "screen.newvisualkeybing.viewer.layout": "布局",
   "screen.newvisualkeybing.viewer.layout.ansi_104": "ANSI 104",
   "screen.newvisualkeybing.viewer.layout.keys_98": "98",

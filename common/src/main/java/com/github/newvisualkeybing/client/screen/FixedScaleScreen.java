@@ -116,4 +116,9 @@ abstract class FixedScaleScreen extends Screen {
     protected final double fixedMouseY(double mouseY) {
         return mouseY / fixedRenderScale;
     }
+
+    /** The active fixed-scale factor (logical px = physical px / this). Used to convert drag deltas. */
+    protected final float fixedScaleFactor() {
+        return fixedRenderScale;
+    }
 }

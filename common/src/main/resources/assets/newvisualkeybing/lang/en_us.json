@@ -1,5 +1,5 @@
 {
-  "key.categories.newvisualkeybing": "New Visual Keybing",
+  "key.category.newvisualkeybing.newvisualkeybing": "New Visual Keybing",
   "key.newvisualkeybing.open_viewer": "Open keybind viewer",
   "screen.newvisualkeybing.viewer.title": "New Visual Keybing",
   "screen.newvisualkeybing.viewer.subtitle": "Holographic keybind map with mouse and mod filters",
@@ -92,6 +92,8 @@
   "screen.newvisualkeybing.viewer.quick_edit.empty": "No actions bound to this key",
   "screen.newvisualkeybing.viewer.quick_edit.listening": "Press a key for %s",
   "screen.newvisualkeybing.viewer.scale": "Scale %dpx",
+  "screen.newvisualkeybing.viewer.zoom": "Zoom %d%%",
+  "screen.newvisualkeybing.viewer.zoom_hint": "Ctrl+Scroll to zoom, drag to pan",
   "screen.newvisualkeybing.viewer.layout": "Layout",
   "screen.newvisualkeybing.viewer.layout.ansi_104": "ANSI 104",
   "screen.newvisualkeybing.viewer.layout.keys_98": "98",

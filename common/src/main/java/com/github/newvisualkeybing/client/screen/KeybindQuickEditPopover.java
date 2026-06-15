@@ -2,6 +2,7 @@ package com.github.newvisualkeybing.client.screen;
 
 import com.github.newvisualkeybing.client.keyboard.KeyBindingScanner;
 import com.github.newvisualkeybing.client.keyboard.KeyboardLayoutData;
+import com.github.newvisualkeybing.client.keyboard.KeybindComboStore;
 import com.github.newvisualkeybing.client.keyboard.KeybindPriorityEnforcer;
 import com.github.newvisualkeybing.client.ui.UITheme;
 import com.github.newvisualkeybing.mixin.KeyMappingAccessor;
@@ -242,6 +243,12 @@ final class KeybindQuickEditPopover {
         Minecraft mc = Minecraft.getInstance();
         String action = Component.translatable(listenMapping.getName()).getString();
         mc.options.setKey(listenMapping, key);
+        // Single-key rebind: drop any chord that was on this mapping, matching every other rebind
+        // path (board bindToKey, edit-screen commit/reset). Without this, rebinding a mapping that
+        // already had a combo to that combo's own trigger key leaves the chord in place — the key
+        // value is unchanged so reconcileToBoundKeys keeps it — and the binding stays a combo, which
+        // is why the main viewer appeared to "only bind combos".
+        KeybindComboStore.global().removeCombo(listenMapping.getName());
         KeybindPriorityEnforcer.resetAndEnforce();
         mc.options.save();
         listenMapping = null;
@@ -255,6 +262,7 @@ final class KeybindQuickEditPopover {
         Minecraft mc = Minecraft.getInstance();
         String action = Component.translatable(mapping.getName()).getString();
         mc.options.setKey(mapping, InputConstants.UNKNOWN);
+        KeybindComboStore.global().removeCombo(mapping.getName());
         KeybindPriorityEnforcer.resetAndEnforce();
         mc.options.save();
         if (onMutation != null) onMutation.run();

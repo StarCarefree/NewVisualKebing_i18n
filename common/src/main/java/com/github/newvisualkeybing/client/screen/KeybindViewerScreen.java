@@ -99,6 +99,25 @@ public class KeybindViewerScreen extends FixedScaleScreen {
     private float keyScale;
     private int keyboardX;
     private int keyboardY;
+    // User keyboard zoom (Ctrl+scroll) layered on top of the auto-fit scale, with drag-to-pan when
+    // the magnified keyboard overflows its viewport. keyboardX/keyboardY are derived per frame from
+    // the centred base position plus the clamped pan; the viewport is the un-zoomed keyboard region.
+    private static final float MIN_KB_ZOOM = 1.0f;
+    private static final float MAX_KB_ZOOM = 4.0f;
+    private static final float KB_ZOOM_STEP = 1.15f;
+    private float keyboardZoom = 1.0f;
+    private float keyboardPanX;
+    private float keyboardPanY;
+    private int keyboardBaseX;
+    private int keyboardBaseY;
+    private int keyboardKbW;
+    private int keyboardKbH;
+    private int keyboardViewportX;
+    private int keyboardViewportY;
+    private int keyboardViewportW;
+    private int keyboardViewportH;
+    private boolean keyboardPanArmed;
+    private float cachedLayoutZoom = -1f;
     private int cachedLayoutWidth = -1;
     private int cachedLayoutHeight = -1;
     private KeyboardLayoutData.Style cachedLayoutStyle;
@@ -232,6 +251,7 @@ public class KeybindViewerScreen extends FixedScaleScreen {
             }
             currentStyle = currentStyle.next();
             button.setMessage(layoutLabel(currentStyle));
+            resetKeyboardZoom();
         });
         addRenderableWidget(layoutButton);
 
@@ -384,6 +404,8 @@ public class KeybindViewerScreen extends FixedScaleScreen {
         if (filtersDirty) refreshFilters();
         animTick += partialTick;
         layoutPanels();
+        // Pan can change without a relayout (cached layout), so re-derive keyboardX/Y every frame.
+        applyKeyboardPan();
         hoveredVirtualKey = null;
 
         pushFixedScale(g);
@@ -615,20 +637,31 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
     }
 
     private void renderKeyboard(GuiGraphics g, int mouseX, int mouseY, long nowMs) {
+        // When zoomed the keyboard can overflow its viewport, so clip it to the region and ignore a
+        // hover whose cursor falls outside (a clipped-away key must not light up or show a tooltip).
+        boolean clip = zoomed();
+        if (clip) {
+            enableFixedScissor(g, keyboardViewportX, keyboardViewportY,
+                    keyboardViewportX + keyboardViewportW, keyboardViewportY + keyboardViewportH);
+        }
         Integer hover = keyboardRenderer.render(g, font, currentStyle,
                 keyboardX, keyboardY, keyScale,
                 selectedVirtualKey, this::isVisibleKey, this::isHiddenBySelectedMod,
                 this::isSearchMatch,
                 mouseX, mouseY, animTick, nowMs);
-        if (hover != null) hoveredVirtualKey = hover;
+        if (clip) g.disableScissor();
+        if (hover != null && overKeyboardViewport(mouseX, mouseY)) hoveredVirtualKey = hover;
     }
 
     private void renderKeyboardInfoBands(GuiGraphics g, int mouseX, int mouseY) {
-        int kbW = KeyboardLayoutData.totalWidthPx(currentStyle, keyScale);
-        if (keyboardInfoTopH > 0) renderKeyboardTopBand(g, keyboardX, keyboardInfoTopY, kbW, keyboardInfoTopH);
+        // Anchor the bands to the keyboard viewport (clamped to its width), not the zoomed keyboard,
+        // so they stay put and never overflow into the panels while panning a magnified keyboard.
+        int bandW = Math.min(keyboardKbW, keyboardViewportW);
+        int bandX = keyboardViewportX + (keyboardViewportW - bandW) / 2;
+        if (keyboardInfoTopH > 0) renderKeyboardTopBand(g, bandX, keyboardInfoTopY, bandW, keyboardInfoTopH);
         if (keyboardInfoBottomH > 0) {
             Integer key = selectedVirtualKey != null ? selectedVirtualKey : hoveredVirtualKey;
-            renderKeyboardBottomBand(g, keyboardX, keyboardInfoBottomY, kbW, keyboardInfoBottomH, key);
+            renderKeyboardBottomBand(g, bandX, keyboardInfoBottomY, bandW, keyboardInfoBottomH, key);
         }
     }
 
@@ -959,13 +992,15 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
     private void layoutPanels() {
         boolean leftRailOpen = modPanelOpen || profilePanelOpen;
         if (width == cachedLayoutWidth && height == cachedLayoutHeight
-                && currentStyle == cachedLayoutStyle && leftRailOpen == cachedLayoutModOpen) {
+                && currentStyle == cachedLayoutStyle && leftRailOpen == cachedLayoutModOpen
+                && keyboardZoom == cachedLayoutZoom) {
             return;
         }
         cachedLayoutWidth = width;
         cachedLayoutHeight = height;
         cachedLayoutStyle = currentStyle;
         cachedLayoutModOpen = leftRailOpen;
+        cachedLayoutZoom = keyboardZoom;
 
         boolean compact = width < COMPACT_WIDTH_THRESHOLD;
         contentTop = HEADER_H + TOOLBAR_H + CHROME_GAP;
@@ -1038,12 +1073,23 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         float heightU = currentStyle.heightU();
         float gapW = (widthU - 1.0f) * KeyboardLayoutData.BASE_GAP;
         float gapH = (heightU - 1.0f) * KeyboardLayoutData.BASE_GAP;
-        keyScale = fitKeyboardScale(keyboardSpaceW, keyboardSpaceH, widthU, heightU, gapW, gapH);
+        // Auto-fit baseline, then apply the user zoom on top. At zoom 1 this matches the old fit.
+        float baseScale = fitKeyboardScale(keyboardSpaceW, keyboardSpaceH, widthU, heightU, gapW, gapH);
+        keyScale = baseScale * keyboardZoom;
 
         int kbW = KeyboardLayoutData.totalWidthPx(currentStyle, keyScale);
         int kbH = KeyboardLayoutData.totalHeightPx(currentStyle, keyScale);
-        keyboardX = keyboardLeft + Math.max(0, (keyboardSpaceW - kbW) / 2);
-        keyboardY = contentTop + infoH + infoGap + Math.max(0, (keyboardSpaceH - kbH) / 2);
+        int viewportY = contentTop + infoH + infoGap;
+        keyboardViewportX = keyboardLeft;
+        keyboardViewportY = viewportY;
+        keyboardViewportW = keyboardSpaceW;
+        keyboardViewportH = keyboardSpaceH;
+        keyboardKbW = kbW;
+        keyboardKbH = kbH;
+        // Base (pan-zero) position centres the keyboard in its viewport; pan is layered each frame.
+        keyboardBaseX = keyboardLeft + Math.round((keyboardSpaceW - kbW) / 2f);
+        keyboardBaseY = viewportY + Math.round((keyboardSpaceH - kbH) / 2f);
+        applyKeyboardPan();
         keyboardInfoTopY = contentTop;
         keyboardInfoTopH = infoH;
         keyboardInfoBottomY = contentBottom - infoH;
@@ -1051,7 +1097,40 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
 
         // Layout|scale string for the status bar; rebuilt only here (on layout change), not per frame.
         statusMiddleText = layoutLabel(currentStyle).getString() + "  |  "
-                + Component.translatable("screen.newvisualkeybing.viewer.scale", Math.round(keyScale)).getString();
+                + Component.translatable("screen.newvisualkeybing.viewer.scale", Math.round(keyScale)).getString()
+                + (zoomed()
+                    ? "  |  " + Component.translatable("screen.newvisualkeybing.viewer.zoom",
+                            Math.round(keyboardZoom * 100)).getString()
+                    : "");
+    }
+
+    /** True when the user has zoomed the keyboard above the auto-fit baseline. */
+    private boolean zoomed() {
+        return keyboardZoom > MIN_KB_ZOOM + 1.0e-3f;
+    }
+
+    /** Clamp the pan so the magnified keyboard cannot leave its viewport, then derive keyboardX/Y. */
+    private void applyKeyboardPan() {
+        int maxPanX = Math.max(0, (keyboardKbW - keyboardViewportW) / 2);
+        int maxPanY = Math.max(0, (keyboardKbH - keyboardViewportH) / 2);
+        keyboardPanX = Mth.clamp(keyboardPanX, -maxPanX, maxPanX);
+        keyboardPanY = Mth.clamp(keyboardPanY, -maxPanY, maxPanY);
+        keyboardX = keyboardBaseX + Math.round(keyboardPanX);
+        keyboardY = keyboardBaseY + Math.round(keyboardPanY);
+    }
+
+    /** Reset zoom and pan to the auto-fit baseline (used when the layout style changes). */
+    private void resetKeyboardZoom() {
+        keyboardZoom = MIN_KB_ZOOM;
+        keyboardPanX = 0f;
+        keyboardPanY = 0f;
+        keyboardPanArmed = false;
+        invalidateLayoutCache();
+    }
+
+    private boolean overKeyboardViewport(double mouseX, double mouseY) {
+        return inside(mouseX, mouseY, keyboardViewportX, keyboardViewportY,
+                keyboardViewportW, keyboardViewportH);
     }
 
     private float fitKeyboardScale(int keyboardSpaceW, int keyboardSpaceH,
@@ -1328,16 +1407,21 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             return true;
         }
 
-        for (KeyboardLayoutData.KeyDef key : KeyboardLayoutData.getKeys(currentStyle)) {
-            if (isHiddenBySelectedMod(key.glfwKey())) continue;
-            int kx = key.screenX(keyboardX, keyScale);
-            int ky = key.screenY(keyboardY, keyScale);
-            int kw = key.screenW(keyScale);
-            int kh = key.screenH(keyScale);
-            if (inside(mouseX, mouseY, kx, ky, kw, kh)) {
-                selectedVirtualKey = key.glfwKey();
-                detailPanel.resetScroll();
-                return true;
+        // Only react to keyboard clicks inside its viewport, so a key panned/clipped outside (while
+        // zoomed) can't be hit through a panel or the toolbar. A press here also arms drag-to-pan.
+        if (overKeyboardViewport(mouseX, mouseY)) {
+            keyboardPanArmed = true;
+            for (KeyboardLayoutData.KeyDef key : KeyboardLayoutData.getKeys(currentStyle)) {
+                if (isHiddenBySelectedMod(key.glfwKey())) continue;
+                int kx = key.screenX(keyboardX, keyScale);
+                int ky = key.screenY(keyboardY, keyScale);
+                int kw = key.screenW(keyScale);
+                int kh = key.screenH(keyScale);
+                if (inside(mouseX, mouseY, kx, ky, kw, kh)) {
+                    selectedVirtualKey = key.glfwKey();
+                    detailPanel.resetScroll();
+                    return true;
+                }
             }
         }
 
@@ -1447,6 +1531,20 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
         mouseX = fixedMouseX(mouseX);
         mouseY = fixedMouseY(mouseY);
         if (quickEdit.isOpen()) return quickEdit.mouseScrolled(mouseX, mouseY, scrollY);
+        // Ctrl+scroll over the keyboard zooms it, layered on top of the auto-fit scale. Scrolling
+        // back to (or below) 1.0 snaps to the baseline and clears any pan.
+        if (Screen.hasControlDown() && overKeyboardViewport(mouseX, mouseY)) {
+            float old = keyboardZoom;
+            keyboardZoom = Mth.clamp(keyboardZoom * (scrollY > 0 ? KB_ZOOM_STEP : 1f / KB_ZOOM_STEP),
+                    MIN_KB_ZOOM, MAX_KB_ZOOM);
+            if (!zoomed()) {
+                keyboardZoom = MIN_KB_ZOOM;
+                keyboardPanX = 0f;
+                keyboardPanY = 0f;
+            }
+            if (keyboardZoom != old) invalidateLayoutCache();
+            return true;
+        }
         if (!detailPanelCollapsed && selectedVirtualKey != null
                 && mouseX >= detailPanelX && mouseX <= detailPanelX + detailPanelW
                 && mouseY >= detailPanelY && mouseY <= detailPanelY + detailPanelH) {
@@ -1474,6 +1572,27 @@ static int paintPanelBase(GuiGraphics g, net.minecraft.client.gui.Font font, int
             }
         }
         return super.mouseScrolled(mouseX, mouseY, scrollY);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        applyFixedScaleMetrics();
+        // Drag the magnified keyboard to pan it within its viewport. dragX/dragY arrive in physical
+        // pixels, so divide by the fixed-scale factor to move in the same logical units as keyScale.
+        if (button == 0 && keyboardPanArmed && zoomed()) {
+            float scale = fixedScaleFactor();
+            keyboardPanX += (float) (dragX / scale);
+            keyboardPanY += (float) (dragY / scale);
+            applyKeyboardPan();
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0) keyboardPanArmed = false;
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     static boolean inside(double mouseX, double mouseY, int x, int y, int w, int h) {
