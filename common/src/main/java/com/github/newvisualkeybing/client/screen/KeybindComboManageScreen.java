@@ -540,6 +540,7 @@ public class KeybindComboManageScreen extends FixedScaleScreen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
         applyFixedScaleMetrics();
+        if (consumeUiScaleScroll(scrollY)) return true;
         mouseX = fixedMouseX(mouseX);
         mouseY = fixedMouseY(mouseY);
         if (capture != null && capture.stage == CaptureStage.SELECT_MAPPING) {
@@ -564,8 +565,18 @@ public class KeybindComboManageScreen extends FixedScaleScreen {
             showNotice(Component.translatable("screen.newvisualkeybing.viewer.combo.distinct_required").getString());
             return;
         }
+        // Bind the mapping to the trigger key first, so combo.secondKey stays equal to the mapping's
+        // bound key — the invariant every in-mod rebind path upholds (see
+        // KeybindEditScreen.commitBinding). Without it, recording a combo whose trigger differs from
+        // the mapping's current key leaves the combo dormant: triggerMatches() requires the live key to
+        // equal the trigger, so the chord would never fire and would show as inactive.
+        Minecraft.getInstance().options.setKey(capture.mapping, key);
         store.putCombo(capture.mapping, capture.firstKey, key);
         KeybindPriorityEnforcer.resetAndEnforce();
+        // Persist the trigger-key rebind to options.txt (the in-mod rebind invariant). Without it the
+        // new key lives only in memory: on restart the mapping reverts to its old key and the startup
+        // reconcileToBoundKeys() prunes this combo (secondKey != bound key), silently losing it.
+        Minecraft.getInstance().options.save();
         showNotice(Component.translatable("screen.newvisualkeybing.viewer.combo.saved",
                 KeybindComboStore.describeMapping(capture.mapping.getName()),
                 capture.firstKey.getDisplayName().getString() + " + " + key.getDisplayName().getString()).getString());
