@@ -31,7 +31,7 @@ NewVisualKeybing is a visual key binding management mod for Minecraft. It presen
 
 Current localization progress [![Crowdin](https://badges.crowdin.net/nvk/localized.svg)](https://crowdin.com/project/nvk)
 
-! If you need to add a localization language, please submit an ISSUE to the [localization repository](https://github.com/StarCarefree/NewVisualKebing_i18n) with the tag "Localization Translation/Translation". Please do not submit it to the [original repository](https://github.com/CancriRecoleta/NewVisualKebing)
+! If you need to add a localization language, please submit an ISSUE to the [localization repository](https://github.com/StarCarefree/NewVisualKebing_i18n) with the tag "本地化翻译/Translation". Please do not submit it to the [original repository](https://github.com/CancriRecoleta/NewVisualKebing)
 
 ### Features
 
